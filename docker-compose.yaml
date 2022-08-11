@@ -1,0 +1,63 @@
+version: '3.6'
+services:
+  omnibus:
+    image: 'gitlab/gitlab-ce:latest'
+    restart: always
+    container_name: 'omnibus'
+    hostname: 'omnibus'
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'https://git.ghanima.net'
+        gitlab_rails['gitlab_shell_ssh_port'] = 2224
+        registry_external_url 'https://cr.ghanima.net'
+        letsencrypt['enable'] = true
+        letsencrypt['auto_renew'] = true
+    ports:
+      - '80:80'
+      - '443:443'
+      - '2422:22'
+      - '5000:5000'
+    volumes:
+      - 'gitlab_config:/etc/gitlab'
+      - 'gitlab_logs:/var/log/gitlab'
+      - 'gitlab_data:/var/opt/gitlab'
+    shm_size: '256m'
+  runner:
+    image: gitlab/gitlab-runner:latest
+    volumes:
+      - 'gitlab_runner_config:/etc/gitlab-runner'
+  cloudflared_configure:
+    image: alpine:latest
+    environment:
+      CF_TUNNEL_UUID: e7039121-f26c-4022-b142-ecf50ba7a10c
+      CF_HOSTNAMES: "\"*.ghanima.net\""
+      CF_CREDENTIALS: ""
+    entrypoint: 
+      - "/bin/sh"
+      - "-ec"
+      - |
+        echo -e "tunnel: $${CF_TUNNEL_UUID}\ncredentials-file: /etc/cloudflared/tunnel-credentials.json\ningress:\n  - hostname: $${CF_HOSTNAMES}\n    service: https://$$(getent hosts omnibus | awk '{print $$1}'):443\n    originRequest:\n      noTLSVerify: true\n  - service: http_status:404\n" > /etc/cloudflared/config.yaml
+        if [ "$${CF_CREDENTIALS}" != "" ]; then
+          echo "$${CF_CREDENTIALS}" > /etc/cloudflared/tunnel-credentials.json
+        fi
+        ls -la /etc/cloudflared
+        cat /etc/cloudflared/*
+    volumes:
+      - 'gitlab_cloudflared_config:/etc/cloudflared'
+  cloudflared:
+    image: 'cloudflare/cloudflared:latest'
+    restart: always
+    container_name: 'cloudflared'
+    hostname: 'cloudflared'
+    command: 'tunnel run'
+    volumes:
+      - 'gitlab_cloudflared_config:/etc/cloudflared'
+    depends_on:
+      cloudflared_configure:
+        condition: service_completed_successfully
+volumes:
+  gitlab_config:
+  gitlab_logs:
+  gitlab_data:
+  gitlab_runner_config:
+  gitlab_cloudflared_config:
