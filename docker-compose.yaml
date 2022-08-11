@@ -6,10 +6,16 @@ services:
     container_name: 'omnibus'
     hostname: 'omnibus'
     environment:
+      TZ: Australia/Melbourne
       GITLAB_OMNIBUS_CONFIG: |
         external_url 'https://git.ghanima.net'
         gitlab_rails['gitlab_shell_ssh_port'] = 2224
         registry_external_url 'https://cr.ghanima.net'
+        pages_external_url "http://ghanima.net"
+        pages_nginx['enable'] = true
+        pages_nginx['listen_port'] = 81
+        pages_nginx['listen_https'] = false
+        pages_nginx['redirect_http_to_https'] = false
         letsencrypt['enable'] = true
         letsencrypt['auto_renew'] = true
     ports:
@@ -24,19 +30,35 @@ services:
     shm_size: '256m'
   runner:
     image: gitlab/gitlab-runner:latest
+    container_name: runner
+    hostname: runner
+    environment:
+      TZ: Australia/Melbourne
     volumes:
       - 'gitlab_runner_config:/etc/gitlab-runner'
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
   cloudflared_configure:
     image: alpine:latest
     environment:
+      TZ: Australia/Melbourne
       CF_TUNNEL_UUID: e7039121-f26c-4022-b142-ecf50ba7a10c
-      CF_HOSTNAMES: "\"*.ghanima.net\""
-      CF_CREDENTIALS: ""
+      #CF_HOSTNAMES: "\"*.ghanima.net\""
+      GL_HOSTNAMES: "cr.ghanima.net,git.ghanima.net"
+      GL_PAGES_DOMAIN: "*.ghanima.net"
+      CF_CREDENTIALS: "{\"AccountTag\":\"783471beb9c45fbe56527404388136f8\",\"TunnelSecret\":\"7KS7ZL7Dz0VQueHtp2S2a4SiuuzDNAms5za6mqux9wU=\",\"TunnelID\":\"e7039121-f26c-4022-b142-ecf50ba7a10c\"}"
     entrypoint: 
       - "/bin/sh"
       - "-ec"
       - |
-        echo -e "tunnel: $${CF_TUNNEL_UUID}\ncredentials-file: /etc/cloudflared/tunnel-credentials.json\ningress:\n  - hostname: $${CF_HOSTNAMES}\n    service: https://$$(getent hosts omnibus | awk '{print $$1}'):443\n    originRequest:\n      noTLSVerify: true\n  - service: http_status:404\n" > /etc/cloudflared/config.yaml
+        echo -e "tunnel: $${CF_TUNNEL_UUID}\ncredentials-file: /etc/cloudflared/tunnel-credentials.json\ningress:\n" > /etc/cloudflared/config.yaml
+        readarray -t -d "," DOMAINS < <(echo "$${GL_HOSTNAMES}" | tr -d '\n')
+        for DOMAIN in "${DOMAINS[@]}"; do
+          echo -e "  - hostname: $${DOMAIN}\n    service: https://$$(getent hosts omnibus | awk '{print $$1}'):443\n    originRequest:\n      noTLSVerify: true\n" >> /etc/cloudflared/config.yaml
+        done
+        echo -e "  - hostname: $${GL_PAGES_DOMAIN}\n    service: http://$$(getent hosts omnibus | awk '{print $$1}'):81\n" >> /etc/cloudflared/config.yaml
+        echo -e "  - service: http_status:404\n" >> /etc/cloudflared/config.yaml
         if [ "$${CF_CREDENTIALS}" != "" ]; then
           echo "$${CF_CREDENTIALS}" > /etc/cloudflared/tunnel-credentials.json
         fi
@@ -46,6 +68,8 @@ services:
       - 'gitlab_cloudflared_config:/etc/cloudflared'
   cloudflared:
     image: 'cloudflare/cloudflared:latest'
+    environment:
+      TZ: Australia/Melbourne
     restart: always
     container_name: 'cloudflared'
     hostname: 'cloudflared'
