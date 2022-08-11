@@ -40,7 +40,7 @@ services:
         source: /var/run/docker.sock
         target: /var/run/docker.sock
   cloudflared_configure:
-    image: alpine:latest
+    image: bash:latest
     environment:
       TZ: Australia/Melbourne
       CF_TUNNEL_UUID: e7039121-f26c-4022-b142-ecf50ba7a10c
@@ -54,7 +54,7 @@ services:
       - |
         echo -e "tunnel: $${CF_TUNNEL_UUID}\ncredentials-file: /etc/cloudflared/tunnel-credentials.json\ningress:\n" > /etc/cloudflared/config.yaml
         readarray -t -d "," DOMAINS < <(echo "$${GL_HOSTNAMES}" | tr -d '\n')
-        for DOMAIN in "${DOMAINS[@]}"; do
+        for DOMAIN in "$${DOMAINS[@]}"; do
           echo -e "  - hostname: $${DOMAIN}\n    service: https://$$(getent hosts omnibus | awk '{print $$1}'):443\n    originRequest:\n      noTLSVerify: true\n" >> /etc/cloudflared/config.yaml
         done
         echo -e "  - hostname: $${GL_PAGES_DOMAIN}\n    service: http://$$(getent hosts omnibus | awk '{print $$1}'):81\n" >> /etc/cloudflared/config.yaml
