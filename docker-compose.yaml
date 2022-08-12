@@ -12,7 +12,8 @@ services:
         gitlab_rails['gitlab_shell_ssh_port'] = 2224
         registry_external_url 'https://cr.ghanima.net'
         pages_external_url "http://ghanima.net"
-        pages_nginx['enable'] = true
+        gitlab_pages['external_http'] = [ '0.0.0.0:8063' ]
+        pages_nginx['enable'] = false
         pages_nginx['listen_port'] = 81
         pages_nginx['listen_https'] = false
         pages_nginx['redirect_http_to_https'] = false
@@ -46,10 +47,11 @@ services:
       CF_TUNNEL_UUID: e7039121-f26c-4022-b142-ecf50ba7a10c
       #CF_HOSTNAMES: "\"*.ghanima.net\""
       GL_HOSTNAMES: "cr.ghanima.net,git.ghanima.net"
-      GL_PAGES_DOMAIN: "*.ghanima.net"
+      GL_PAGES_DOMAIN: "ghanima.net"
+      GL_PAGES_DOMAIN_ROOT_SITE: "shaunmaher.ghanima.net"
       CF_CREDENTIALS: "{\"AccountTag\":\"783471beb9c45fbe56527404388136f8\",\"TunnelSecret\":\"7KS7ZL7Dz0VQueHtp2S2a4SiuuzDNAms5za6mqux9wU=\",\"TunnelID\":\"e7039121-f26c-4022-b142-ecf50ba7a10c\"}"
     entrypoint: 
-      - "/bin/sh"
+      - "/usr/local/bin/bash"
       - "-ec"
       - |
         echo -e "tunnel: $${CF_TUNNEL_UUID}\ncredentials-file: /etc/cloudflared/tunnel-credentials.json\ningress:\n" > /etc/cloudflared/config.yaml
@@ -57,7 +59,8 @@ services:
         for DOMAIN in "$${DOMAINS[@]}"; do
           echo -e "  - hostname: $${DOMAIN}\n    service: https://$$(getent hosts omnibus | awk '{print $$1}'):443\n    originRequest:\n      noTLSVerify: true\n" >> /etc/cloudflared/config.yaml
         done
-        echo -e "  - hostname: $${GL_PAGES_DOMAIN}\n    service: http://$$(getent hosts omnibus | awk '{print $$1}'):81\n" >> /etc/cloudflared/config.yaml
+        echo -e "  - hostname: $${GL_PAGES_DOMAIN}\n    service: http://$$(getent hosts omnibus | awk '{print $$1}'):8063\n    httpHostHeader: \"$${GL_PAGES_DOMAIN_ROOT_SITE}\"\n    originRequest:\n      httpHostHeader: \"$${GL_PAGES_DOMAIN_ROOT_SITE}\"" >> /etc/cloudflared/config.yaml
+        echo -e "  - hostname: \"*.$${GL_PAGES_DOMAIN}\"\n    service: http://$$(getent hosts omnibus | awk '{print $$1}'):8063\n" >> /etc/cloudflared/config.yaml
         echo -e "  - service: http_status:404\n" >> /etc/cloudflared/config.yaml
         if [ "$${CF_CREDENTIALS}" != "" ]; then
           echo "$${CF_CREDENTIALS}" > /etc/cloudflared/tunnel-credentials.json
@@ -70,6 +73,7 @@ services:
     image: 'cloudflare/cloudflared:latest'
     environment:
       TZ: Australia/Melbourne
+      TUNNEL_LOGLEVEL: trace
     restart: always
     container_name: 'cloudflared'
     hostname: 'cloudflared'
