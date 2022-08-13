@@ -48,7 +48,7 @@ services:
       #CF_HOSTNAMES: "\"*.ghanima.net\""
       GL_HOSTNAMES: "cr.ghanima.net,git.ghanima.net"
       GL_PAGES_DOMAIN: "ghanima.net"
-      GL_PAGES_DOMAIN_ROOT_SITE: "shaunmaher.ghanima.net"
+      GL_PAGES_DOMAIN_ROOT_SITE: "ghanima.net"
       CF_CREDENTIALS: "{\"AccountTag\":\"783471beb9c45fbe56527404388136f8\",\"TunnelSecret\":\"7KS7ZL7Dz0VQueHtp2S2a4SiuuzDNAms5za6mqux9wU=\",\"TunnelID\":\"e7039121-f26c-4022-b142-ecf50ba7a10c\"}"
     entrypoint: 
       - "/usr/local/bin/bash"
