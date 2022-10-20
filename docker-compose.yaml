@@ -1,7 +1,7 @@
 version: '3.6'
 services:
   omnibus:
-    image: 'gitlab/gitlab-ce:latest'
+    image: 'gitlab/gitlab-ce:15.4.3-ce.0'
     restart: always
     container_name: 'omnibus'
     hostname: 'omnibus'
@@ -30,7 +30,8 @@ services:
       - 'gitlab_data:/var/opt/gitlab'
     shm_size: '256m'
   runner:
-    image: gitlab/gitlab-runner:latest
+    image: gitlab/gitlab-runner:v15.3.0
+    restart: always
     container_name: runner
     hostname: runner
     environment:
@@ -48,7 +49,7 @@ services:
       #CF_HOSTNAMES: "\"*.ghanima.net\""
       GL_HOSTNAMES: "cr.ghanima.net,git.ghanima.net"
       GL_PAGES_DOMAIN: "ghanima.net"
-      GL_PAGES_DOMAIN_ROOT_SITE: "ghanima.net"
+      GL_PAGES_DOMAIN_ROOT_SITE: "www.ghanima.net"
       CF_CREDENTIALS: "{\"AccountTag\":\"783471beb9c45fbe56527404388136f8\",\"TunnelSecret\":\"7KS7ZL7Dz0VQueHtp2S2a4SiuuzDNAms5za6mqux9wU=\",\"TunnelID\":\"e7039121-f26c-4022-b142-ecf50ba7a10c\"}"
     entrypoint: 
       - "/usr/local/bin/bash"
@@ -70,7 +71,7 @@ services:
     volumes:
       - 'gitlab_cloudflared_config:/etc/cloudflared'
   cloudflared:
-    image: 'cloudflare/cloudflared:latest'
+    image: 'cloudflare/cloudflared:2022.10.2'
     environment:
       TZ: Australia/Melbourne
       TUNNEL_LOGLEVEL: trace
