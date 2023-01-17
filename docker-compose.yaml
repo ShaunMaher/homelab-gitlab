@@ -1,7 +1,7 @@
 version: '3.6'
 services:
   omnibus:
-    image: 'gitlab/gitlab-ce:15.6.1-ce.0'
+    image: 'gitlab/gitlab-ce:15.7.2-ce.0'
     restart: always
     container_name: 'omnibus'
     hostname: 'omnibus'
@@ -11,6 +11,9 @@ services:
         external_url 'https://git.ghanima.net'
         gitlab_rails['gitlab_shell_ssh_port'] = 2224
         registry_external_url 'https://cr.ghanima.net'
+        registry['registry_http_addr'] = "localhost:5000"
+        registry_nginx['redirect_http_to_https'] = true
+        registry_nginx['listen_port'] = 5678
         pages_external_url "http://ghanima.net"
         gitlab_pages['external_http'] = [ '0.0.0.0:8063' ]
         pages_nginx['enable'] = false
@@ -30,7 +33,7 @@ services:
       - 'gitlab_data:/var/opt/gitlab'
     shm_size: '256m'
   runner:
-    image: gitlab/gitlab-runner:v15.6.1
+    image: gitlab/gitlab-runner:v15.7.1
     restart: always
     container_name: runner
     hostname: runner
@@ -47,7 +50,7 @@ services:
       TZ: Australia/Melbourne
       CF_TUNNEL_UUID: e7039121-f26c-4022-b142-ecf50ba7a10c
       #CF_HOSTNAMES: "\"*.ghanima.net\""
-      GL_HOSTNAMES: "cr.ghanima.net,git.ghanima.net"
+      GL_HOSTNAMES: "git.ghanima.net"
       GL_PAGES_DOMAIN: "ghanima.net"
       GL_PAGES_DOMAIN_ROOT_SITE: "www.ghanima.net"
       CF_CREDENTIALS: "{\"AccountTag\":\"783471beb9c45fbe56527404388136f8\",\"TunnelSecret\":\"7KS7ZL7Dz0VQueHtp2S2a4SiuuzDNAms5za6mqux9wU=\",\"TunnelID\":\"e7039121-f26c-4022-b142-ecf50ba7a10c\"}"
@@ -60,6 +63,7 @@ services:
         for DOMAIN in "$${DOMAINS[@]}"; do
           echo -e "  - hostname: $${DOMAIN}\n    service: https://$$(getent hosts omnibus | awk '{print $$1}'):443\n    originRequest:\n      noTLSVerify: true\n" >> /etc/cloudflared/config.yaml
         done
+        echo -e "  - hostname: cr.ghanima.net\n    service: https://$$(getent hosts omnibus | awk '{print $$1}'):5678\n    originRequest:\n      noTLSVerify: true\n" >> /etc/cloudflared/config.yaml
         echo -e "  - hostname: $${GL_PAGES_DOMAIN}\n    service: http://$$(getent hosts omnibus | awk '{print $$1}'):8063\n    httpHostHeader: \"$${GL_PAGES_DOMAIN_ROOT_SITE}\"\n    originRequest:\n      httpHostHeader: \"$${GL_PAGES_DOMAIN_ROOT_SITE}\"" >> /etc/cloudflared/config.yaml
         echo -e "  - hostname: \"*.$${GL_PAGES_DOMAIN}\"\n    service: http://$$(getent hosts omnibus | awk '{print $$1}'):8063\n" >> /etc/cloudflared/config.yaml
         echo -e "  - service: http_status:404\n" >> /etc/cloudflared/config.yaml
@@ -71,7 +75,7 @@ services:
     volumes:
       - 'gitlab_cloudflared_config:/etc/cloudflared'
   cloudflared:
-    image: 'cloudflare/cloudflared:2022.11.1'
+    image: 'cloudflare/cloudflared:2022.12.1'
     environment:
       TZ: Australia/Melbourne
       TUNNEL_LOGLEVEL: trace
