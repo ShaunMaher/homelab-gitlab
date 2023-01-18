@@ -1,7 +1,7 @@
 version: '3.6'
 services:
   omnibus:
-    image: 'gitlab/gitlab-ce:15.7.2-ce.0'
+    image: 'gitlab/gitlab-ce:15.7.5-ce.0'
     restart: always
     container_name: 'omnibus'
     hostname: 'omnibus'
@@ -33,7 +33,7 @@ services:
       - 'gitlab_data:/var/opt/gitlab'
     shm_size: '256m'
   runner:
-    image: gitlab/gitlab-runner:v15.7.1
+    image: gitlab/gitlab-runner:v15.7.2
     restart: always
     container_name: runner
     hostname: runner
@@ -75,7 +75,7 @@ services:
     volumes:
       - 'gitlab_cloudflared_config:/etc/cloudflared'
   cloudflared:
-    image: 'cloudflare/cloudflared:2022.12.1'
+    image: 'cloudflare/cloudflared:2023.1.0'
     environment:
       TZ: Australia/Melbourne
       TUNNEL_LOGLEVEL: trace
