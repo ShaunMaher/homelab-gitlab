@@ -45,6 +45,7 @@ services:
         source: /var/run/docker.sock
         target: /var/run/docker.sock
   cloudflared_configure:
+    restart: always
     image: bash:latest
     environment:
       TZ: Australia/Melbourne
@@ -58,36 +59,53 @@ services:
       - "/usr/local/bin/bash"
       - "-ec"
       - |
-        echo -e "tunnel: $${CF_TUNNEL_UUID}\ncredentials-file: /etc/cloudflared/tunnel-credentials.json\ningress:\n" > /etc/cloudflared/config.yaml
-        readarray -t -d "," DOMAINS < <(echo "$${GL_HOSTNAMES}" | tr -d '\n')
-        for DOMAIN in "$${DOMAINS[@]}"; do
-          echo -e "  - hostname: $${DOMAIN}\n    service: https://$$(getent hosts omnibus | awk '{print $$1}'):443\n    originRequest:\n      noTLSVerify: true\n" >> /etc/cloudflared/config.yaml
+        CONFMD5=""
+        while true; do
+          echo -e "tunnel: $${CF_TUNNEL_UUID}\ncredentials-file: /etc/cloudflared/tunnel-credentials.json\ningress:\n" > /etc/cloudflared/config.yaml
+          readarray -t -d "," DOMAINS < <(echo "$${GL_HOSTNAMES}" | tr -d '\n')
+          for DOMAIN in "$${DOMAINS[@]}"; do
+            echo -e "  - hostname: $${DOMAIN}\n    service: https://$$(getent hosts omnibus | awk '{print $$1}'):443\n    originRequest:\n      noTLSVerify: true\n" >> /etc/cloudflared/config.yaml
+          done
+          echo -e "  - hostname: cr.ghanima.net\n    service: https://$$(getent hosts omnibus | awk '{print $$1}'):5678\n    originRequest:\n      noTLSVerify: true\n" >> /etc/cloudflared/config.yaml
+          echo -e "  - hostname: $${GL_PAGES_DOMAIN}\n    service: http://$$(getent hosts omnibus | awk '{print $$1}'):8063\n    httpHostHeader: \"$${GL_PAGES_DOMAIN_ROOT_SITE}\"\n    originRequest:\n      httpHostHeader: \"$${GL_PAGES_DOMAIN_ROOT_SITE}\"" >> /etc/cloudflared/config.yaml
+          echo -e "  - hostname: \"*.$${GL_PAGES_DOMAIN}\"\n    service: http://$$(getent hosts omnibus | awk '{print $$1}'):8063\n" >> /etc/cloudflared/config.yaml
+          echo -e "  - service: http_status:404\n" >> /etc/cloudflared/config.yaml
+          if [ "$${CF_CREDENTIALS}" != "" ]; then
+            echo "$${CF_CREDENTIALS}" > /etc/cloudflared/tunnel-credentials.json
+          fi
+          ls -la /etc/cloudflared
+          cat /etc/cloudflared/*
+          
+          NEWCONFMD5=$(cat /etc/cloudflared/* | md5sum | awk '{print $$1}')
+          echo "CONFMD5 $${CONFMD5}, NEWCONFMD5 $${NEWCONFMD5}"
+          if [ "$${NEWCONFMD5}" != "$${CONFMD5}" ]; then
+            CFPID=$$(ps a | grep '[[:space:]]cloudflared[[:space:]].*tunnel run.*$$' | awk '{print $$1}')
+            echo "Need to reload cloudflared (pid $${CFPID})"
+            if [ "$${CFPID}" != "" ]; then
+              kill -HUP $${CFPID}
+              CONFMD5="$${NEWCONFMD5}"
+            fi
+          fi
+ 
+          sleep 10
         done
-        echo -e "  - hostname: cr.ghanima.net\n    service: https://$$(getent hosts omnibus | awk '{print $$1}'):5678\n    originRequest:\n      noTLSVerify: true\n" >> /etc/cloudflared/config.yaml
-        echo -e "  - hostname: $${GL_PAGES_DOMAIN}\n    service: http://$$(getent hosts omnibus | awk '{print $$1}'):8063\n    httpHostHeader: \"$${GL_PAGES_DOMAIN_ROOT_SITE}\"\n    originRequest:\n      httpHostHeader: \"$${GL_PAGES_DOMAIN_ROOT_SITE}\"" >> /etc/cloudflared/config.yaml
-        echo -e "  - hostname: \"*.$${GL_PAGES_DOMAIN}\"\n    service: http://$$(getent hosts omnibus | awk '{print $$1}'):8063\n" >> /etc/cloudflared/config.yaml
-        echo -e "  - service: http_status:404\n" >> /etc/cloudflared/config.yaml
-        if [ "$${CF_CREDENTIALS}" != "" ]; then
-          echo "$${CF_CREDENTIALS}" > /etc/cloudflared/tunnel-credentials.json
-        fi
-        ls -la /etc/cloudflared
-        cat /etc/cloudflared/*
     volumes:
       - 'gitlab_cloudflared_config:/etc/cloudflared'
   cloudflared:
-    image: 'cloudflare/cloudflared:2023.3.0'
+    image: 'cloudflare/cloudflared:2023.3.1'
     environment:
       TZ: Australia/Melbourne
       TUNNEL_LOGLEVEL: trace
+    pid: service:cloudflared_configure
     restart: always
     container_name: 'cloudflared'
     hostname: 'cloudflared'
     command: '--protocol http2 tunnel run'
     volumes:
       - 'gitlab_cloudflared_config:/etc/cloudflared'
-    depends_on:
-      cloudflared_configure:
-        condition: service_completed_successfully
+    #depends_on:
+    #  cloudflared_configure:
+    #    condition: service_completed_successfully
 volumes:
   gitlab_config:
   gitlab_logs:
