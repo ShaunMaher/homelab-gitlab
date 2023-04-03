@@ -22,6 +22,7 @@ services:
         pages_nginx['redirect_http_to_https'] = false
         letsencrypt['enable'] = true
         letsencrypt['auto_renew'] = true
+        prometheus['home'] = "/tmp/prometheus"
     ports:
       - '80:80'
       - '443:443'
@@ -31,6 +32,8 @@ services:
       - 'gitlab_config:/etc/gitlab'
       - 'gitlab_logs:/var/log/gitlab'
       - 'gitlab_data:/var/opt/gitlab'
+      - type: tmpfs
+        target: /tmp
     shm_size: '256m'
   runner:
     image: gitlab/gitlab-runner:v15.9.1
