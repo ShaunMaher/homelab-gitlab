@@ -63,6 +63,73 @@ gitlab_rails['object_store']['objects']['ci_secure_files']['enabled'] = false
 gitlab_rails['object_store']['objects']['external_diffs']['enabled'] = false
 ```
 
+Bucket Policy
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AddCannedAcl",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::100000190796:user/git.ghanima.net"
+      },
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectAcl",
+        "s3:ListBucket",
+        "s3:PutObject",
+        "s3:PutObjectAcl",
+        "s3:DeleteObject"
+      ],
+      "Resource": "arn:aws:s3:::pages.git.ghanima.net/*"
+    },
+    {
+      "Sid": "AddCannedAcl",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::100000190796:user/git.ghanima.net"
+      },
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectAcl",
+        "s3:ListBucket",
+        "s3:PutObject",
+        "s3:PutObjectAcl",
+        "s3:DeleteObject"
+      ],
+      "Resource": "arn:aws:s3:::pages.git.ghanima.net"
+    },
+    {
+      "Sid": "AddCannedAcl",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::100000190796:user/pages.ghanima.net"
+      },
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectAcl",
+        "s3:ListBucket"
+      ],
+      "Resource": "arn:aws:s3:::pages.git.ghanima.net/*"
+    },
+    {
+      "Sid": "AddCannedAcl",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::100000190796:user/pages.ghanima.net"
+      },
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectAcl",
+        "s3:ListBucket"
+      ],
+      "Resource": "arn:aws:s3:::pages.git.ghanima.net"
+    }
+  ]
+}
+```
+
 ## Work in Progress: Pages server on a VPS (for availability and to reduce dependence on home internet connection)
 **Reference:** https://docs.gitlab.com/ee/administration/pages/#running-gitlab-pages-on-a-separate-server
 
