@@ -14,6 +14,8 @@
 #### SSH Access
 
 ## Work in Progress: Backup Configuration
+**Reference:** https://docs.gitlab.com/ee/raketasks/backup_gitlab.html
+
 TODO:
 * We need some non-COW storage (so that the underlying ZFS dataset doesn't get
   a bunch of changes that will cause the incremental backups to grow) to hold
@@ -34,6 +36,8 @@ gitlab_rails['backup_path']
 ```
 
 ## Work in Progress: Storing some objects in Cloud Object Storage
+**Reference:** https://docs.gitlab.com/ee/administration/pages/#using-object-storage
+
 The following will store certain objects in Wasabi cloud storage.  The initial
 goal is to have pages hosted in the cloud but to do this you need a seperate
 GitLab instance pointing at the same Object Storage as the primary instance.
