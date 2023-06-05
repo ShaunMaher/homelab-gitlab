@@ -36,5 +36,9 @@ while true; do
       fi
     fi
   fi
+
+  # TODO: cleanup local files
+
+  # TODO: cleanup remote files
   sleep 3600
 done
