@@ -33,12 +33,18 @@ function info() {
   printf '%b\n' "${GREEN}${1}${NC}"
 }
 
+function error() {
+  printf '%b\n' "${RED}${1}${NC}"
+}
+
 while true; do
   last_incremental_success_start_time=0
   last_full_success_start_time=0
   last_success_start_time=0
   incremental_backup=0
-  current_copy_exit_code=0
+  current_copy_exit_code=1
+  current_backup_result=1
+  current_backup_skipped=0
 
   # Load the timestamps of the most recent successful backups
   if [ -f /etc/gitlab-backups/last_incremental_success_start_time ]; then
@@ -79,8 +85,6 @@ server_side_encryption =
 storage_class =
 no_check_bucket = true
 EOF
-
-  find "${GITLAB_BACKUPS_DIR}" > /tmp/file_list_before
   
   if [ $last_success_age -gt 86400 ]; then
     if [ $last_full_age -lt 2419200 ]; then # 4 weeks
@@ -97,39 +101,38 @@ EOF
     current_backup_result=$(cat /etc/gitlab-backups/current_exit_code)
   else
     printf '%b\n' "Most recent successful backup was only $last_success_age seconds ago."
-    current_backup_result=$(cat /etc/gitlab-backups/current_exit_code)
+    current_backup_skipped=1
   fi
 
   # TODO: We also need the secrets files gitlab.rb and gitlab-secrets.json
 
-  find "${GITLAB_BACKUPS_DIR}" > /tmp/file_list_after
-  IFS=$'\n' read -d '' -r -a new_files < <(diff -ruN /tmp/file_list_before /tmp/file_list_after | grep -v '^\+++' | grep '^\+')
+  find "${GITLAB_BACKUPS_DIR}" -maxdepth 1 -mindepth 1 -name "*.tar" > /tmp/file_list_after
+  IFS=$'\n' read -d '' -r -a new_files < <(diff -ruN /etc/gitlab-backups/file_list_before /tmp/file_list_after | grep -v '^\+++' | grep '^\+')
 
-  if [ $current_backup_result -eq 0 ]; then
-    for file in "${new_files[@]}"; do
-      abs_file=$(printf '%s' "${file}" | sed 's/^\+//g')
-      rel_file=$(basename "${abs_file}")
-      if [ ! "" == "${file}" ]; then
-        verbose "New file was created: ${file}"
-        debug "pv \"${abs_file}\" | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass \"${OPENSSL_PASS}\" | rclone --config /tmp/rclone.conf rcat \"wasabi:${S3_BUCKET}/${rel_file}\""
-        pv "${abs_file}" | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass "${OPENSSL_PASS}" | rclone --config /tmp/rclone.conf rcat "wasabi:${S3_BUCKET}/${rel_file}"
-        current_copy_exit_code=0 #$(( TODO: $PIPESTATUS[0]??? ))
-      fi
-    done
-
-    if [ $current_copy_exit_code -eq 0 ]; then
-      if [ $incremental_backup -gt 0 ]; then
-        cat /etc/gitlab-backups/current_start_time > /etc/gitlab-backups/last_incremental_success_start_time
-      else
-        cat /etc/gitlab-backups/current_start_time > /etc/gitlab-backups/last_full_success_start_time
-      fi
-
-      # TODO: cleanup local files
-
-      # TODO: cleanup remote files
-    else
-      error "Backup process failed.  Not uploading files."
+  for file in "${new_files[@]}"; do
+    abs_file=$(printf '%s' "${file}" | sed 's/^\+//g')
+    rel_file=$(basename "${abs_file}")
+    if [ ! "" == "${abs_file}" ]; then
+      verbose "New file was created: ${abs_file}"
+      debug "pv \"${abs_file}\" | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass [MASKED] | rclone --config /tmp/rclone.conf rcat \"wasabi:${S3_BUCKET}/${rel_file}\""
+      pv "${abs_file}" | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass "${OPENSSL_PASS}" | rclone --config /tmp/rclone.conf rcat "wasabi:${S3_BUCKET}/${rel_file}"
+      current_copy_exit_code=0 #$(( TODO: $PIPESTATUS[0]??? ))
     fi
+  done
+
+  if [ $current_copy_exit_code -eq 0 ] && [ $current_backup_result -eq 0 ]; then
+    if [ $incremental_backup -gt 0 ]; then
+      cat /etc/gitlab-backups/current_start_time > /etc/gitlab-backups/last_incremental_success_start_time
+    else
+      cat /etc/gitlab-backups/current_start_time > /etc/gitlab-backups/last_full_success_start_time
+    fi
+    cat /tmp/file_list_after /etc/gitlab-backups/file_list_before
+    
+    # TODO: cleanup local files
+
+    # TODO: cleanup remote files
+  elif [ $current_backup_skipped -lt 1 ]; then
+    error "Backup or upload process failed."
   fi
 
   info "Backup process complete.  Will now take a nap."
