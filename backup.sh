@@ -1,6 +1,7 @@
 #!/usr/bin/bash
 
 OMNIBUS_CONTAINER_NAME="${OMNIBUS_CONTAINER_NAME:-"omnibus"}"
+OMNIBUS_SKIP_OBJECTS=${OMNIBUS_SKIP_OBJECTS:-"registry,artifacts,packages"}
 OPENSSL_PASS="${OPENSSL_PASS:-"pass:mypassword_would_be_here"}"
 #Also valid:
 #OPENSSL_PASS="${OPENSSL_PASS:-"file:/path/to/file"}"
@@ -87,16 +88,20 @@ no_check_bucket = true
 EOF
   
   if [ $last_success_age -gt 86400 ]; then
-    if [ $last_full_age -lt 2419200 ]; then # 4 weeks
-      # We pull the last_success_start_time backwards by 10 minutes just to be
-      #  sure this backup and the previous backup overlap and don't miss
-      #  anything.
+    if [ $last_full_age -lt 2419200 ]; then
+      
       info "Starting a GitLab Incremental Backup.  PREVIOUS_BACKUP=$(( $last_success_start_time - 600 ))"
-      docker exec "${OMNIBUS_CONTAINER_NAME}" gitlab-backup create SKIP=registry,artifacts,packages INCREMENTAL=yes PREVIOUS_BACKUP=$(( $last_success_start_time - 600 )); echo $? >/etc/gitlab-backups/current_exit_code;
-      incremental_backup=1
+      docker exec "${OMNIBUS_CONTAINER_NAME}" gitlab-backup create SKIP=${OMNIBUS_SKIP_OBJECTS} INCREMENTAL=yes PREVIOUS_BACKUP=$(( $last_success_start_time - 600 )); echo $? >/etc/gitlab-backups/current_exit_code;
+      current_backup_result=$(cat /etc/gitlab-backups/current_exit_code)
+      if [ $current_backup_result -ne 0 ]; then
+        info "Starting a GitLab Full Backup due to incremental backup failure."
+        docker exec "${OMNIBUS_CONTAINER_NAME}" gitlab-backup create SKIP=${OMNIBUS_SKIP_OBJECTS} ; echo $? >/etc/gitlab-backups/current_exit_code;  
+      else
+        incremental_backup=1
+      fi
     else
       info "Starting a GitLab Full Backup."
-      docker exec "${OMNIBUS_CONTAINER_NAME}" gitlab-backup create SKIP=registry,artifacts,packages ; echo $? >/etc/gitlab-backups/current_exit_code;
+      docker exec "${OMNIBUS_CONTAINER_NAME}" gitlab-backup create SKIP=${OMNIBUS_SKIP_OBJECTS} ; echo $? >/etc/gitlab-backups/current_exit_code;
     fi
     current_backup_result=$(cat /etc/gitlab-backups/current_exit_code)
   else
@@ -109,6 +114,7 @@ EOF
   find "${GITLAB_BACKUPS_DIR}" -maxdepth 1 -mindepth 1 -name "*.tar" > /tmp/file_list_after
   IFS=$'\n' read -d '' -r -a new_files < <(diff -ruN /etc/gitlab-backups/file_list_before /tmp/file_list_after | grep -v '^\+++' | grep '^\+')
 
+  current_start_time=0
   for file in "${new_files[@]}"; do
     abs_file=$(printf '%s' "${file}" | sed 's/^\+//g')
     rel_file=$(basename "${abs_file}")
@@ -117,14 +123,18 @@ EOF
       debug "pv \"${abs_file}\" | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass [MASKED] | rclone --config /tmp/rclone.conf rcat \"wasabi:${S3_BUCKET}/${rel_file}\""
       pv "${abs_file}" | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass "${OPENSSL_PASS}" | rclone --config /tmp/rclone.conf rcat "wasabi:${S3_BUCKET}/${rel_file}"
       current_copy_exit_code=0 #$(( TODO: $PIPESTATUS[0]??? ))
+      this_start_time=$(printf '%b' "${rel_file}" | awk 'BEGIN{FS="_"}{print $1}')
+      if [ $this_start_time -gt $current_start_time ]; then
+        current_start_time=$this_start_time
+      fi
     fi
   done
 
   if [ $current_copy_exit_code -eq 0 ] && [ $current_backup_result -eq 0 ]; then
     if [ $incremental_backup -gt 0 ]; then
-      cat /etc/gitlab-backups/current_start_time > /etc/gitlab-backups/last_incremental_success_start_time
+      printf '%b' "${current_start_time}" > /etc/gitlab-backups/last_incremental_success_start_time
     else
-      cat /etc/gitlab-backups/current_start_time > /etc/gitlab-backups/last_full_success_start_time
+      printf '%b' "${current_start_time}" > /etc/gitlab-backups/last_full_success_start_time
     fi
     cat /tmp/file_list_after /etc/gitlab-backups/file_list_before
     
