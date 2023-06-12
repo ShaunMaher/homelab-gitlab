@@ -130,6 +130,10 @@ EOF
       debug "pv \"${abs_file}\" | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass [MASKED] | rclone --config /tmp/rclone.conf rcat \"wasabi:${S3_BUCKET}/${rel_file}\""
       pv "${abs_file}" | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass "${OPENSSL_PASS}" | rclone --config /tmp/rclone.conf rcat "wasabi:${S3_BUCKET}/${rel_file}"
       current_copy_exit_code=0 #$(( TODO: $PIPESTATUS[0]??? ))
+
+      printf '%s' "PIPESTATUS: ${PIPESTATUS[0]} ${PIPESTATUS[1]} ${PIPESTATUS[2]} ${PIPESTATUS[3]}"
+      #$current_copy_exit_code=$(( $current_copy_exit_code + ${PIPESTATUS[0]} + ${PIPESTATUS[1]} + ${PIPESTATUS[2]} ))
+
       this_start_time=$(printf '%b' "${rel_file}" | awk 'BEGIN{FS="_"}{print $1}')
       if [ $this_start_time -gt $current_start_time ]; then
         current_start_time=$this_start_time
