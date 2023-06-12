@@ -88,11 +88,12 @@ no_check_bucket = true
 chunk_size = 64M
 EOF
   
-  if [ $last_success_age -gt 86400 ]; then
+  if [ $last_success_age -gt 0 ]; then
     if [ $last_full_age -lt 2419200 ]; then
-      
-      info "Starting a GitLab Incremental Backup.  PREVIOUS_BACKUP=$(( $last_success_start_time - 600 ))"
-      docker exec "${OMNIBUS_CONTAINER_NAME}" gitlab-backup create SKIP=${OMNIBUS_SKIP_OBJECTS} INCREMENTAL=yes PREVIOUS_BACKUP=$(( $last_success_start_time - 600 )); echo $? >/etc/gitlab-backups/current_exit_code;
+      previous_backup=$(find "${GITLAB_BACKUPS_DIR}" -maxdepth 1 -mindepth 1 -name "*.tar" | grep "${last_success_start_time}" | tail -1)
+      previous_backup=$(basename "${previous_backup}" | awk 'BEGIN{FS="_gitlab"}{print $1}')
+      info "Starting a GitLab Incremental Backup.  PREVIOUS_BACKUP=${previous_backup}"
+      docker exec "${OMNIBUS_CONTAINER_NAME}" gitlab-backup create SKIP=${OMNIBUS_SKIP_OBJECTS} INCREMENTAL=yes PREVIOUS_BACKUP=${previous_backup}; echo $? >/etc/gitlab-backups/current_exit_code;
       current_backup_result=$(cat /etc/gitlab-backups/current_exit_code)
       if [ $current_backup_result -ne 0 ]; then
         info "Starting a GitLab Full Backup due to incremental backup failure."
@@ -111,6 +112,8 @@ EOF
   fi
 
   # TODO: We also need the secrets files gitlab.rb and gitlab-secrets.json
+  docker exec "${OMNIBUS_CONTAINER_NAME}" cat /etc/gitlab/gitlab.rb >"${GITLAB_BACKUPS_DIR}/gitlab.rb"
+  docker exec "${OMNIBUS_CONTAINER_NAME}" cat /etc/gitlab/gitlab-secrets.json >"${GITLAB_BACKUPS_DIR}/gitlab-secrets.json"
 
   find "${GITLAB_BACKUPS_DIR}" -maxdepth 1 -mindepth 1 -name "*.tar" > /tmp/file_list_after
   IFS=$'\n' read -d '' -r -a new_files < <(diff -ruN /etc/gitlab-backups/file_list_before /tmp/file_list_after | grep -v '^\+++' | grep '^\+')
@@ -121,6 +124,9 @@ EOF
     rel_file=$(basename "${abs_file}")
     if [ ! "" == "${abs_file}" ]; then
       verbose "New file was created: ${abs_file}"
+      tar --append -f "${abs_file}" "${GITLAB_BACKUPS_DIR}/gitlab.rb"
+      tar --append -f "${abs_file}" "${GITLAB_BACKUPS_DIR}/gitlab-secrets.json"
+      tar --list -f "${abs_file}"
       debug "pv \"${abs_file}\" | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass [MASKED] | rclone --config /tmp/rclone.conf rcat \"wasabi:${S3_BUCKET}/${rel_file}\""
       pv "${abs_file}" | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass "${OPENSSL_PASS}" | rclone --config /tmp/rclone.conf rcat "wasabi:${S3_BUCKET}/${rel_file}"
       current_copy_exit_code=0 #$(( TODO: $PIPESTATUS[0]??? ))
@@ -137,7 +143,7 @@ EOF
     else
       printf '%b' "${current_start_time}" > /etc/gitlab-backups/last_full_success_start_time
     fi
-    cat /tmp/file_list_after /etc/gitlab-backups/file_list_before
+    cat /tmp/file_list_after >/etc/gitlab-backups/file_list_before
     
     # TODO: cleanup local files
 
