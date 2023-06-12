@@ -16,24 +16,19 @@
 ## Work in Progress: Backup Configuration
 **Reference:** https://docs.gitlab.com/ee/raketasks/backup_gitlab.html
 
-TODO:
-* We need some non-COW storage (so that the underlying ZFS dataset doesn't get
-  a bunch of changes that will cause the incremental backups to grow) to hold
-  the .tar file that is created before it is uploaded to the Cloud.
-
-```ruby
-gitlab_rails['backup_upload_connection'] = {
-  'provider' => 'AWS',
-  'region' => 'eu-central-1',
-  'aws_access_key_id' => 'AKIAKIAKI',
-  'aws_secret_access_key' => 'secret123'
-}
-gitlab_rails['backup_upload_remote_directory'] = 'my.s3.bucket'
-gitlab_rails['backup_multipart_chunk_size'] = 104857600
-
-# We need some non-COW storage for
-gitlab_rails['backup_path']
-```
+The script `backup.sh` does the following:
+* Requests GitLab produce a Full or Incremental backup.  Full backups are
+  produced if:
+  * No local incremental backups exist
+  * It has been more than 4 weeks since the last Full backup.
+* Appends the `gitlab.rb` and `gitlab-secrets.json` files to the backup
+  * Generally these files should be considered "sensitive" but the backup file
+    is encrypted before it is sent to Cloud Storage so if this file is leaked
+    the attacker still can't access these sensitive files without first
+    breaking the encryption
+* Encrypts and streams the backup to S3 Cloud Storage with the `rclone` tool
+  * I use Wasabi for cost effective S3 cloud storage (and I'm not paid to say
+    that, unfortunately)
 
 ## Work in Progress: Storing some objects in Cloud Object Storage
 **Reference:** https://docs.gitlab.com/ee/administration/pages/#using-object-storage
