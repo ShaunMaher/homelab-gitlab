@@ -85,6 +85,7 @@ acl =
 server_side_encryption =
 storage_class =
 no_check_bucket = true
+chunk_size = 64M
 EOF
   
   if [ $last_success_age -gt 86400 ]; then
