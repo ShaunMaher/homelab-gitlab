@@ -1,4 +1,14 @@
 # Gitlab Omnibus with Runner and Cloudflared Tunnel Ingress
+## Environment variables
+The following environment variables must be created:
+* For S3 Object storage
+  * `S3_ACCESS_KEY`
+  * `S3_SECRET_KEY`
+  * `S3_PAGES_BUCKET`: The S3 bucket that pages content will be stored in
+  * `S3_REGION`: For Wasabi, this should always be `us-east-1`
+  * `S3_ENDPOINT`: For Wasabi, see [this list](https://docs.wasabi.com/docs/what-are-the-service-urls-for-wasabis-different-storage-regions)
+  * `BACKUPSRUNNER_REGISTRATION_TOKEN`: Create but leave blank initially.
+
 ## Post Installation
 ### Disable "Sign-up"
 * **Admin Area** -> **General** -> **Sign-up Restrictions** -> uncheck **Sign-up enabled**
@@ -8,6 +18,8 @@
 ### Local DNS Override (so the runner isn't going via Cloudflare)
 
 ### Register the runner
+TODO: Update the docker-compose.yml file to automatically register the runner
+like what we have for the backuprunner.
 
 ### Cloudflare Access
 
@@ -40,12 +52,13 @@ The script `backup.sh` does the following:
 * Add the following environment variables to *Settings* -> *CI/CD* -> *Variables*:
   * `S3_ACCESS_KEY`
   * `S3_SECRET_KEY`
-  * `S3_BACKUPS_BUCKET`
-  * `S3_REGION`
-  * `S3_ENDPOINT`
+  * `S3_REGION`: For Wasabi, this should always be `us-east-1`
+  * `S3_ENDPOINT`: For Wasabi, see [this list](https://docs.wasabi.com/docs/what-are-the-service-urls-for-wasabis-different-storage-regions)
   * `BACKUP_ENCRYPTION_PASSWORD`: 
+  * `S3_BUCKET`: The name of the target bucket to store the backups
   * `OMNIBUS_SKIP_OBJECTS` (optional): You can skip backing up large objects
     that can be easily recreated if they are lost.  For example "`registry,artifacts,packages`"
+* Create a scheduled pipeline to run the backups.
 
 ## Work in Progress: Storing some objects in Cloud Object Storage
 **Reference:** https://docs.gitlab.com/ee/administration/pages/#using-object-storage

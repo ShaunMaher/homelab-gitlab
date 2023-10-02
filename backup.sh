@@ -154,6 +154,5 @@ if [ $current_copy_exit_code -eq 0 ] && [ $current_backup_result -eq 0 ]; then
   # TODO: cleanup remote files
 elif [ $current_backup_skipped -lt 1 ]; then
   error "Backup or upload process failed."
+  sleep 1200
 fi
-
-sleep 1200

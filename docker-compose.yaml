@@ -34,10 +34,10 @@ services:
         gitlab_rails['object_store']['proxy_download'] = true
         gitlab_rails['object_store']['connection'] = {
           'provider' => 'AWS',
-          'region' => 'eu-central-1',
-          'aws_access_key_id' => 'IMXUN7C48W8AKBN8U7HT',
-          'aws_secret_access_key' => 'FfXC2HD02YMqnd5QGIqeDFVQs63DfEiJRnTeDgI0',
-          'endpoint' => 'https://s3.eu-central-1.wasabisys.com',
+          'region' => '$S3_REGION',
+          'aws_access_key_id' => '$S3_ACCESS_KEY',
+          'aws_secret_access_key' => '$S3_SECRET_KEY',
+          'endpoint' => '$S3_ENDPOINT',
           'path_style' => true
         }
         gitlab_rails['object_store']['objects']['artifacts']['enabled'] = false
@@ -48,7 +48,7 @@ services:
         gitlab_rails['object_store']['objects']['dependency_proxy']['enabled'] = false
         gitlab_rails['object_store']['objects']['terraform_state']['enabled'] = false
         gitlab_rails['object_store']['objects']['ci_secure_files']['enabled'] = false
-        gitlab_rails['object_store']['objects']['pages']['bucket'] = 'pages.git.ghanima.net'
+        gitlab_rails['object_store']['objects']['pages']['bucket'] = '$S3_PAGES_BUCKET'
     ports:
       - '80:80'
       - '443:443'
@@ -182,8 +182,18 @@ services:
           --docker-allowed-pull-policies "if-not-present" \
           --docker-allowed-pull-policies "always" \
           --docker-network-mode gitlab_default \
-          --docker-volumes /mnt/BulkData/gitlab-backups:/var/backups/gitlab
-        exec /usr/bin/dumb-init /entrypoint run
+          --docker-volumes /mnt/BulkData/gitlab-backups:/var/backups/gitlab \
+          --docker-volumes gitlab_backup_metadata:/etc/gitlab-backups \
+          --docker-volumes /mnt/BulkData/apt-cache:/var/cache/apt \
+          --docker-volumes /var/run/docker.sock:/var/run/docker.sock
+        if [ $$? -eq 0 ]; then
+          echo "Registration succeeded.  Starting the runner."
+          exec /usr/bin/dumb-init /entrypoint run
+        else
+          echo "Registration failed.  Sleep for 1 minute and exit.  Docker will restart this container to retry."
+          sleep 60
+          exit 1
+        fi
     privileged: true
     restart: always
     hostname: backupsrunner
@@ -203,6 +213,12 @@ services:
         source: /var/run/docker.sock
         target: /var/run/docker.sock
       - 'gitlab_backup_metadata:/etc/gitlab-backups'
+      - type: bind
+        source: /mnt/BulkData/apt-cache
+        target: /var/cache/apt
+    depends_on:
+      omnibus:
+        condition: service_healthy
   backups:
     image: 'ubuntu:latest'
     labels:
