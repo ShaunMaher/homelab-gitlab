@@ -50,7 +50,7 @@ services:
         tmpfs:
           mode: 01777
     healthcheck:
-      test: [ "CMD", "/opt/gitlab/embedded/bin/curl", "--fail", "http://127.0.0.1:8063" ]
+      test: [ "CMD", "/opt/gitlab/embedded/bin/curl", "--header", "Host: www.ghanima.net" "--fail", "http://127.0.0.1:8063" ]
       interval: 1m
       timeout: 10s
       retries: 3
