@@ -36,6 +36,7 @@ The script `backup.sh` does the following:
   * TODO
 * Add/update the `BACKUPSRUNNER_REGISTRATION_TOKEN` stack environment variable
   to the value created in the previous steps.
+* Disable shared runners for this project
 * Add the following environment variables to *Settings* -> *CI/CD* -> *Variables*:
   * `S3_ACCESS_KEY`
   * `S3_SECRET_KEY`
