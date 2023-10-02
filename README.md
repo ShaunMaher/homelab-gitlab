@@ -4,8 +4,8 @@
 * Make the pages tunnel depend on Omnibus being healthy so it doesn't start
   before pages are actually accessible.  This will allow the alternative pages
   server to continue receiving 100% of requests until the local node is
-  actaully ready.
-  
+  actually ready.
+
 ## Cloudflare tunnels
 We will establish two tunnels to Cloudflare.  One will be for Gitlab Pages
 traffic and the other will be for all other traffic.  This will allow us to 
