@@ -30,6 +30,22 @@ The script `backup.sh` does the following:
   * I use Wasabi for cost effective S3 cloud storage (and I'm not paid to say
     that, unfortunately)
 
+### Configuration
+* Create a project for GitLab backups.  It can be this same project.
+* Create a project owned runner
+  * TODO
+* Add/update the `BACKUPSRUNNER_REGISTRATION_TOKEN` stack environment variable
+  to the value created in the previous steps.
+* Add the following environment variables to *Settings* -> *CI/CD* -> *Variables*:
+  * `S3_ACCESS_KEY`
+  * `S3_SECRET_KEY`
+  * `S3_BACKUPS_BUCKET`
+  * `S3_REGION`
+  * `S3_ENDPOINT`
+  * `BACKUP_ENCRYPTION_PASSWORD`: 
+  * `OMNIBUS_SKIP_OBJECTS` (optional): You can skip backing up large objects
+    that can be easily recreated if they are lost.  For example "`registry,artifacts,packages`"
+
 ## Work in Progress: Storing some objects in Cloud Object Storage
 **Reference:** https://docs.gitlab.com/ee/administration/pages/#using-object-storage
 

@@ -1,0 +1,8 @@
+stages:
+  - run-backups
+
+run-gitlab-backup:
+  stage: run-backups
+  image: ubuntu:latest
+  script:
+    ./backup.sh
