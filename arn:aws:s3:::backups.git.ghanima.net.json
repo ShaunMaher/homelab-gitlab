@@ -1,0 +1,39 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "AddCannedAcl",
+        "Effect": "Allow",
+        "Principal": {
+          "AWS": "arn:aws:iam::100000190796:user/git.ghanima.net"
+        },
+        "Action": [
+          "s3:GetObject",
+          "s3:GetObjectAcl",
+          "s3:ListBucket",
+          "s3:PutObject",
+          "s3:PutObjectAcl",
+          "s3:DeleteObject",
+          "s3:CreateBucket"
+        ],
+        "Resource": "arn:aws:s3:::backups.git.ghanima.net/*"
+      },
+      {
+        "Sid": "AddCannedAcl",
+        "Effect": "Allow",
+        "Principal": {
+          "AWS": "arn:aws:iam::100000190796:user/git.ghanima.net"
+        },
+        "Action": [
+          "s3:GetObject",
+          "s3:GetObjectAcl",
+          "s3:ListBucket",
+          "s3:PutObject",
+          "s3:PutObjectAcl",
+          "s3:DeleteObject",
+          "s3:CreateBucket"
+        ],
+        "Resource": "arn:aws:s3:::backups.git.ghanima.net"
+      }
+    ]
+  }

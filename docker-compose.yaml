@@ -96,17 +96,20 @@ services:
       - "com.centurylinklabs.watchtower.enable=true"
     environment:
       TZ: Australia/Melbourne
-      CF_TUNNEL_UUID: e7039121-f26c-4022-b142-ecf50ba7a10c
+      CF_TUNNEL_UUID: $CF_TUNNEL_UUID
+      CF_PAGES_TUNNEL_UUID: $CF_PAGES_TUNNEL_UUID
+      CF_PAGES_CREDENTIALS: $CF_PAGES_CREDENTIALS
       #CF_HOSTNAMES: "\"*.ghanima.net\""
       GL_HOSTNAMES: "git.ghanima.net"
       GL_PAGES_DOMAIN: "ghanima.net"
       GL_PAGES_DOMAIN_ROOT_SITE: "www.ghanima.net"
-      CF_CREDENTIALS: "{\"AccountTag\":\"783471beb9c45fbe56527404388136f8\",\"TunnelSecret\":\"7KS7ZL7Dz0VQueHtp2S2a4SiuuzDNAms5za6mqux9wU=\",\"TunnelID\":\"e7039121-f26c-4022-b142-ecf50ba7a10c\"}"
+      CF_CREDENTIALS: $CF_CREDENTIALS
     entrypoint: 
       - "/usr/local/bin/bash"
       - "-ec"
       - |
         CONFMD5=""
+        PAGESCONFMD5=""
         while true; do
           echo -e "tunnel: $${CF_TUNNEL_UUID}\ncredentials-file: /etc/cloudflared/tunnel-credentials.json\ningress:\n" > /etc/cloudflared/config.yaml
           readarray -t -d "," DOMAINS < <(echo "$${GL_HOSTNAMES}" | tr -d '\n')
@@ -133,11 +136,32 @@ services:
               CONFMD5="$${NEWCONFMD5}"
             fi
           fi
- 
+
+          echo -e "tunnel: $${CF_PAGES_TUNNEL_UUID}\ncredentials-file: /etc/cloudflared/tunnel-credentials.json\ningress:\n" > /etc/cloudflared_pages/config.yaml
+          echo -e "  - hostname: $${GL_PAGES_DOMAIN}\n    service: http://$$(getent hosts omnibus | awk '{print $$1}'):8063\n    httpHostHeader: \"$${GL_PAGES_DOMAIN_ROOT_SITE}\"\n    originRequest:\n      httpHostHeader: \"$${GL_PAGES_DOMAIN_ROOT_SITE}\"" >> /etc/cloudflared_pages/config.yaml
+          echo -e "  - hostname: \"*.$${GL_PAGES_DOMAIN}\"\n    service: http://$$(getent hosts omnibus | awk '{print $$1}'):8063\n" >> /etc/cloudflared_pages/config.yaml
+          echo -e "  - service: http_status:404\n" >> /etc/cloudflared_pages/config.yaml
+          if [ "$${CF_PAGES_CREDENTIALS}" != "" ]; then
+            echo "$${CF_PAGES_CREDENTIALS}" > /etc/cloudflared_pages/tunnel-credentials.json
+          fi
+          ls -la /etc/cloudflared_pages/
+          cat /etc/cloudflared_pages/*
+          NEWPAGESCONFMD5=$(cat /etc/cloudflared/* | md5sum | awk '{print $$1}')
+          echo "PAGESCONFMD5 $${PAGESCONFMD5}, NEWPAGESCONFMD5 $${NEWPAGESCONFMD5}"
+          if [ "$${NEWPAGESCONFMD5}" != "$${PAGESCONFMD5}" ]; then
+            CFPID=$$(ps a | grep '[[:space:]]cloudflared[[:space:]].*tunnel run.*$$' | awk '{print $$1}')
+            echo "Need to reload cloudflared (pid $${CFPID})"
+            if [ "$${CFPID}" != "" ]; then
+              kill -HUP $${CFPID}
+              PAGESCONFMD5="$${NEWPAGESCONFMD5}"
+            fi
+          fi
+          
           sleep 10
         done
     volumes:
       - 'gitlab_cloudflared_config:/etc/cloudflared'
+      - 'gitlab_cloudflared_pages_config:/etc/cloudflared_pages'
   cloudflared:
     image: 'cloudflare/cloudflared:latest'
     labels:
@@ -147,11 +171,23 @@ services:
       TUNNEL_LOGLEVEL: trace
     pid: service:cloudflared_configure
     restart: always
-    container_name: 'cloudflared'
     hostname: 'cloudflared'
     command: '--protocol http2 tunnel run'
     volumes:
       - 'gitlab_cloudflared_config:/etc/cloudflared'
+  cloudflared_pages:
+    image: 'cloudflare/cloudflared:latest'
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    environment:
+      TZ: Australia/Melbourne
+      TUNNEL_LOGLEVEL: trace
+    pid: service:cloudflared_configure
+    restart: always
+    hostname: 'cloudflared_pages'
+    command: '--protocol http2 tunnel run'
+    volumes:
+      - 'gitlab_cloudflared_pages_config:/etc/cloudflared'
     #depends_on:
     #  cloudflared_configure:
     #    condition: service_completed_successfully
@@ -219,36 +255,6 @@ services:
     depends_on:
       omnibus:
         condition: service_healthy
-  backups:
-    image: 'ubuntu:latest'
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-    entrypoint: 
-      - "/usr/bin/bash"
-      - "-ec"
-      - |
-        sleep $(( $$RANDOM % 3600 ))
-        while true; do
-          sleep 60
-        done
-    environment:
-      TZ: Australia/Melbourne
-      S3_ACCESS_KEY: $S3_ACCESS_KEY
-      S3_SECRET_KEY: $S3_SECRET_KEY
-      S3_BUCKET: $S3_BACKUPS_BUCKET
-      S3_REGION: $S3_REGION
-      S3_ENDPOINT: $S3_ENDPOINT
-      OPENSSL_PASS: $BACKUP_ENCRYPTION_PASSWORD
-    volumes:
-      - type: tmpfs
-        target: /tmp
-      - type: bind
-        source: /mnt/BulkData/gitlab-backups
-        target: /var/backups/gitlab
-      - type: bind
-        source: /var/run/docker.sock
-        target: /var/run/docker.sock
-      - 'gitlab_backup_metadata:/etc/gitlab-backups'
 volumes:
   gitlab_config:
   gitlab_logs:
@@ -257,3 +263,4 @@ volumes:
   gitlab_runner_config:
   gitlab_backupsrunner_config:
   gitlab_cloudflared_config:
+  gitlab_cloudflared_pages_config:

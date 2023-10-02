@@ -1,12 +1,67 @@
-# Gitlab Omnibus with Runner and Cloudflared Tunnel Ingress
+# Gitlab Omnibus with Runner, Cloudflared Tunnel Ingress and Cloud Backups
+## Cloudflare tunnels
+We will establish two tunnels to Cloudflare.  One will be for Gitlab Pages
+traffic and the other will be for all other traffic.  This will allow us to 
+seperate the Gitlab Pages requests and handle them differently.
+```
+cloudflared tunnel create pages.ghanima.net
+```
+
+```
+cloudflared tunnel create git.ghanima.net
+```
+
+## S3
+We will be storing Gitlab Pages and Gitlab backups in S3 storage.  For this
+implementation we will specifically use Wasabi because it's cheap and seems
+reliable.
+
+### Buckets
+Create two buckets (maybe more later):
+* `pages.git.ghanima.net`
+* `backups.git.ghanima.net`
+
+### Users
+Create two users:
+* git.ghanima.net
+* pages.ghanima.net
+
+Each new user will have an "ARN".  This ARN will be used in the Access Policies.
+
+### Access policies
+The [pages.git.ghanima.net Bucket's Access Policy](arn:aws:s3:::pages.git.ghanima.net.json)
+allows the "git.ghanima.net" user read-write access to the bucket contents but
+allows the "pages.ghanima.net" user read-only access.
+
+* Replace instances (2) of `"AWS": "arn:aws:iam::100000190796:user/git.ghanima.net"`
+with the ARN of the "git.ghanima.net" user.
+* Replace instances (2) of `"AWS": "arn:aws:iam::100000190796:user/pages.ghanima.net"`
+  with the ARN of the "pages.ghanima.net" user.
+* Replace instances of `"Resource": "arn:aws:s3:::pages.git.ghanima.net/*"` (1)
+  and `"Resource": "arn:aws:s3:::pages.git.ghanima.net"` (1) with the ARN of
+  the backups.git.ghanima.net bucket.
+
+The [backups.git.ghanima.net Bucket's Access Policy](arn:aws:s3:::backups.git.ghanima.net.json)
+allows the "git.ghanima.net" user read-write access to the bucket.
+
+* Replace instances of `"AWS": "arn:aws:iam::100000190796:user/git.ghanima.net"`
+with the ARN of the "git.ghanima.net" user.
+* Replace instances of `"Resource": "arn:aws:s3:::backups.git.ghanima.net/*"` and
+  `"Resource": "arn:aws:s3:::backups.git.ghanima.net"` with the ARN of the
+  backups.git.ghanima.net bucket.
+
 ## Environment variables
 The following environment variables must be created:
 * For S3 Object storage
-  * `S3_ACCESS_KEY`
-  * `S3_SECRET_KEY`
+  * `S3_ACCESS_KEY`: Access Key ID for the "git.ghanima.net" user.  Used for Gitlab Pages access to the S3 storage.
+  * `S3_SECRET_KEY`: Access Key Secret for the "git.ghanima.net" user.  Used for Gitlab Pages access to the S3 storage.
   * `S3_PAGES_BUCKET`: The S3 bucket that pages content will be stored in
   * `S3_REGION`: For Wasabi, this should always be `us-east-1`
   * `S3_ENDPOINT`: For Wasabi, see [this list](https://docs.wasabi.com/docs/what-are-the-service-urls-for-wasabis-different-storage-regions)
+  * `CF_PAGES_TUNNEL_UUID`: 
+  * `CF_PAGES_CREDENTIALS`: 
+  * `CF_TUNNEL_UUID`: 
+  * `CF_CREDENTIALS`: 
   * `BACKUPSRUNNER_REGISTRATION_TOKEN`: Create but leave blank initially.
 
 ## Post Installation
@@ -16,16 +71,23 @@ The following environment variables must be created:
 ### Create a new user
 
 ### Local DNS Override (so the runner isn't going via Cloudflare)
+TODO: This would be better implemented as a link:
+```yaml
+links:
+  - omnibus:git.ghanima.net
+```
 
 ### Register the runner
 TODO: Update the docker-compose.yml file to automatically register the runner
 like what we have for the backuprunner.
 
-### Cloudflare Access
+### SSO with Google Workspace
+TODO
 
+### Cloudflare Access
 #### SSH Access
 
-## Work in Progress: Backup Configuration
+## Backup Configuration
 **Reference:** https://docs.gitlab.com/ee/raketasks/backup_gitlab.html
 
 The script `backup.sh` does the following:
@@ -60,100 +122,14 @@ The script `backup.sh` does the following:
     that can be easily recreated if they are lost.  For example "`registry,artifacts,packages`"
 * Create a scheduled pipeline to run the backups.
 
-## Work in Progress: Storing some objects in Cloud Object Storage
+## Storing Gitlab Pages (and other selected objects) in Cloud Object Storage
 **Reference:** https://docs.gitlab.com/ee/administration/pages/#using-object-storage
 
 The following will store certain objects in Wasabi cloud storage.  The initial
 goal is to have pages hosted in the cloud but to do this you need a seperate
 GitLab instance pointing at the same Object Storage as the primary instance.
 
-```ruby
-gitlab_rails['object_store']['enabled'] = true
-gitlab_rails['object_store']['proxy_download'] = true
-gitlab_rails['object_store']['connection'] = {
-  'provider' => 'AWS',
-  'region' => 'eu-central-1',
-  'aws_access_key_id' => '<AWS_ACCESS_KEY_ID>',
-  'aws_secret_access_key' => '<AWS_SECRET_ACCESS_KEY>'
-  'endpoint' -> 'https://s3.eu-central-1.wasabisys.com'
-}
-gitlab_rails['object_store']['objects']['artifacts']['bucket'] = 'artifacts.git.ghanima.net'
-gitlab_rails['object_store']['objects']['lfs']['bucket'] = 'lfs.git.ghanima.net'
-gitlab_rails['object_store']['objects']['uploads']['bucket'] = 'uploads.git.ghanima.net'
-gitlab_rails['object_store']['objects']['packages']['bucket'] = 'packages.git.ghanima.net'
-gitlab_rails['object_store']['objects']['pages']['bucket'] = 'pages.git.ghanima.net'
-gitlab_rails['object_store']['objects']['dependency_proxy']['enabled'] = false
-gitlab_rails['object_store']['objects']['terraform_state']['enabled'] = false
-gitlab_rails['object_store']['objects']['ci_secure_files']['enabled'] = false
-gitlab_rails['object_store']['objects']['external_diffs']['enabled'] = false
-```
-
-Bucket Policy
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "AddCannedAcl",
-      "Effect": "Allow",
-      "Principal": {
-        "AWS": "arn:aws:iam::100000190796:user/git.ghanima.net"
-      },
-      "Action": [
-        "s3:GetObject",
-        "s3:GetObjectAcl",
-        "s3:ListBucket",
-        "s3:PutObject",
-        "s3:PutObjectAcl",
-        "s3:DeleteObject"
-      ],
-      "Resource": "arn:aws:s3:::pages.git.ghanima.net/*"
-    },
-    {
-      "Sid": "AddCannedAcl",
-      "Effect": "Allow",
-      "Principal": {
-        "AWS": "arn:aws:iam::100000190796:user/git.ghanima.net"
-      },
-      "Action": [
-        "s3:GetObject",
-        "s3:GetObjectAcl",
-        "s3:ListBucket",
-        "s3:PutObject",
-        "s3:PutObjectAcl",
-        "s3:DeleteObject"
-      ],
-      "Resource": "arn:aws:s3:::pages.git.ghanima.net"
-    },
-    {
-      "Sid": "AddCannedAcl",
-      "Effect": "Allow",
-      "Principal": {
-        "AWS": "arn:aws:iam::100000190796:user/pages.ghanima.net"
-      },
-      "Action": [
-        "s3:GetObject",
-        "s3:GetObjectAcl",
-        "s3:ListBucket"
-      ],
-      "Resource": "arn:aws:s3:::pages.git.ghanima.net/*"
-    },
-    {
-      "Sid": "AddCannedAcl",
-      "Effect": "Allow",
-      "Principal": {
-        "AWS": "arn:aws:iam::100000190796:user/pages.ghanima.net"
-      },
-      "Action": [
-        "s3:GetObject",
-        "s3:GetObjectAcl",
-        "s3:ListBucket"
-      ],
-      "Resource": "arn:aws:s3:::pages.git.ghanima.net"
-    }
-  ]
-}
-```
+TODO: more info
 
 ## Work in Progress: Pages server on a VPS (for availability and to reduce dependence on home internet connection)
 **Reference:** https://docs.gitlab.com/ee/administration/pages/#running-gitlab-pages-on-a-separate-server
