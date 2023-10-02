@@ -5,4 +5,4 @@ run-gitlab-backup:
   stage: run-backups
   image: ubuntu:latest
   script:
-    ./backup.sh
+    bash ./backup.sh
