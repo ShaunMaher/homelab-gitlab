@@ -18,15 +18,28 @@ services:
         registry['registry_http_addr'] = "localhost:5000"
         registry_nginx['redirect_http_to_https'] = true
         registry_nginx['listen_port'] = 5678
+
+        # Pages are presented to the world via Cloudflared so Nginx does not
+        #  need to be involved.
         pages_external_url "http://ghanima.net"
         gitlab_pages['external_http'] = [ '0.0.0.0:8063' ]
         pages_nginx['enable'] = false
         pages_nginx['listen_port'] = 81
         pages_nginx['listen_https'] = false
         pages_nginx['redirect_http_to_https'] = false
+
+        # The local certificates should be rarely used because Cloudflare are
+        #  providing the public facing TLS certificates but some "internal"
+        #  connections (e.g. runner registrations) may fail if valid
+        #  certificates are not used.
         letsencrypt['enable'] = true
         letsencrypt['auto_renew'] = true
+
+        # Reduce writes to persistant storage by redirecting some data to /tmp
         prometheus['home'] = "/tmp/prometheus"
+
+        # This is an external volume specifically for backups shared between
+        #  containers
         gitlab_rails['backup_path'] = "/var/backups/gitlab/"
 
         # Consolidated object storage configuration
@@ -40,6 +53,9 @@ services:
           'endpoint' => '$S3_ENDPOINT',
           'path_style' => true
         }
+
+        # We are using S3 storage for Gitlab Pages only.  Backup storage is
+        #  configured elsewhere.
         gitlab_rails['object_store']['objects']['artifacts']['enabled'] = false
         gitlab_rails['object_store']['objects']['external_diffs']['enabled'] = false
         gitlab_rails['object_store']['objects']['lfs']['enabled'] = false
