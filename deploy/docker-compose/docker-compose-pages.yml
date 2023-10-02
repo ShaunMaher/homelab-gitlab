@@ -105,9 +105,9 @@ services:
     command: '--protocol http2 tunnel run'
     volumes:
       - 'gitlab_cloudflared_pages_config:/etc/cloudflared'
-    depends_on:
-      omnibus:
-        condition: service_healthy
+    #depends_on:
+    #  omnibus:
+    #    condition: service_healthy
 volumes:
   gitlab_config:
   gitlab_logs:
