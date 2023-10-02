@@ -1,12 +1,16 @@
-version: '3.6'
 services:
   omnibus:
-    image: 'gitlab/gitlab-ce:15.11.3-ce.0'
+    # image: ubuntu:latest
+    # entrypoint: [ "bash", "-c", "sleep 86400" ]
+    image: 'gitlab/gitlab-ce:latest'
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
     restart: always
     container_name: 'omnibus'
     hostname: 'omnibus'
     environment:
       TZ: Australia/Melbourne
+
       GITLAB_OMNIBUS_CONFIG: |
         external_url 'https://git.ghanima.net'
         gitlab_rails['gitlab_shell_ssh_port'] = 2224
@@ -23,6 +27,7 @@ services:
         letsencrypt['enable'] = true
         letsencrypt['auto_renew'] = true
         prometheus['home'] = "/tmp/prometheus"
+        gitlab_rails['backup_path'] = "/var/backups/gitlab/"
     ports:
       - '80:80'
       - '443:443'
@@ -34,9 +39,25 @@ services:
       - 'gitlab_data:/var/opt/gitlab'
       - type: tmpfs
         target: /tmp
+        tmpfs:
+          mode: 01777
+      - type: bind
+        source: /mnt/BulkData/gitlab-backups
+        target: /var/backups/gitlab
+      - type: bind
+        source: /mnt/BulkData/gitlab-packages
+        target: /var/opt/gitlab/gitlab-rails/shared/packages
+      - type: bind
+        source: /mnt/BulkData/gitlab-registry
+        target: /var/opt/gitlab/gitlab-rails/shared/registry
+      - type: bind
+        source: /mnt/BulkData/gitlab-artifacts
+        target: /var/opt/gitlab/gitlab-rails/shared/artifacts
     shm_size: '256m'
   runner:
-    image: gitlab/gitlab-runner:v15.11.0
+    image: gitlab/gitlab-runner:latest
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
     restart: always
     container_name: runner
     hostname: runner
@@ -50,6 +71,8 @@ services:
   cloudflared_configure:
     restart: always
     image: bash:latest
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
     environment:
       TZ: Australia/Melbourne
       CF_TUNNEL_UUID: e7039121-f26c-4022-b142-ecf50ba7a10c
@@ -95,7 +118,9 @@ services:
     volumes:
       - 'gitlab_cloudflared_config:/etc/cloudflared'
   cloudflared:
-    image: 'cloudflare/cloudflared:2023.5.0'
+    image: 'cloudflare/cloudflared:latest'
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
     environment:
       TZ: Australia/Melbourne
       TUNNEL_LOGLEVEL: trace
@@ -109,9 +134,40 @@ services:
     #depends_on:
     #  cloudflared_configure:
     #    condition: service_completed_successfully
+  backups:
+    image: 'ubuntu:latest'
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    entrypoint: 
+      - "/usr/bin/bash"
+      - "-ec"
+      - |
+        sleep $(( $$RANDOM % 3600 ))
+        while true; do
+          sleep 60
+        done
+    environment:
+      TZ: Australia/Melbourne
+      S3_ACCESS_KEY: $S3_ACCESS_KEY
+      S3_SECRET_KEY: $S3_SECRET_KEY
+      S3_BUCKET: $S3_BACKUPS_BUCKET
+      S3_REGION: $S3_REGION
+      S3_ENDPOINT: $S3_ENDPOINT
+      OPENSSL_PASS: $BACKUP_ENCRYPTION_PASSWORD
+    volumes:
+      - type: tmpfs
+        target: /tmp
+      - type: bind
+        source: /mnt/BulkData/gitlab-backups
+        target: /var/backups/gitlab
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+      - 'gitlab_backup_metadata:/etc/gitlab-backups'
 volumes:
   gitlab_config:
   gitlab_logs:
   gitlab_data:
+  gitlab_backup_metadata:
   gitlab_runner_config:
   gitlab_cloudflared_config:
