@@ -20,6 +20,7 @@ NC='\033[0m' # No Color
 
 #sleep $(( $RANDOM % 3600 ))
 
+apt update
 apt install -y rclone docker.io pv
 
 function verbose() {
@@ -38,40 +39,39 @@ function error() {
   printf '%b\n' "${RED}${1}${NC}"
 }
 
-while true; do
-  last_incremental_success_start_time=0
-  last_full_success_start_time=0
-  last_success_start_time=0
-  incremental_backup=0
-  current_copy_exit_code=1
-  current_backup_result=1
-  current_backup_skipped=0
+last_incremental_success_start_time=0
+last_full_success_start_time=0
+last_success_start_time=0
+incremental_backup=0
+current_copy_exit_code=1
+current_backup_result=1
+current_backup_skipped=0
 
-  # Load the timestamps of the most recent successful backups
-  if [ -f /etc/gitlab-backups/last_incremental_success_start_time ]; then
-    last_incremental_success_start_time=$(cat /etc/gitlab-backups/last_incremental_success_start_time)
-  fi
-  if [ -f /etc/gitlab-backups/last_full_success_start_time ]; then
-    last_full_success_start_time=$(cat /etc/gitlab-backups/last_full_success_start_time)
-  fi
+# Load the timestamps of the most recent successful backups
+if [ -f /etc/gitlab-backups/last_incremental_success_start_time ]; then
+  last_incremental_success_start_time=$(cat /etc/gitlab-backups/last_incremental_success_start_time)
+fi
+if [ -f /etc/gitlab-backups/last_full_success_start_time ]; then
+  last_full_success_start_time=$(cat /etc/gitlab-backups/last_full_success_start_time)
+fi
 
-  # The most recent backup of any type is the last_success_start_time
-  if [ $last_full_success_start_time -gt $last_incremental_success_start_time ]; then
-    last_success_start_time=$last_full_success_start_time
-  else
-    last_success_start_time=$last_incremental_success_start_time
-  fi
-  last_success_age=$(( $(date +%s) - $last_success_start_time ))
-  last_full_age=$(( $(date +%s) - $last_full_success_start_time ))
+# The most recent backup of any type is the last_success_start_time
+if [ $last_full_success_start_time -gt $last_incremental_success_start_time ]; then
+  last_success_start_time=$last_full_success_start_time
+else
+  last_success_start_time=$last_incremental_success_start_time
+fi
+last_success_age=$(( $(date +%s) - $last_success_start_time ))
+last_full_age=$(( $(date +%s) - $last_full_success_start_time ))
 
-  debug "last_full_success_start_time: $last_full_success_start_time"
-  debug "last_incremental_success_start_time: $last_incremental_success_start_time"
-  debug "last_success_start_time: $last_success_start_time"
-  debug "last_success_age: $last_success_age"
-  date +%s > /etc/gitlab-backups/current_start_time
+debug "last_full_success_start_time: $last_full_success_start_time"
+debug "last_incremental_success_start_time: $last_incremental_success_start_time"
+debug "last_success_start_time: $last_success_start_time"
+debug "last_success_age: $last_success_age"
+date +%s > /etc/gitlab-backups/current_start_time
 
-  # Write Wasabi configuration to rclone conf file
-  cat >/tmp/rclone.conf <<- EOF
+# Write Wasabi configuration to rclone conf file
+cat >/tmp/rclone.conf <<- EOF
 [wasabi]
 type = s3
 provider = Wasabi
@@ -87,75 +87,73 @@ storage_class =
 no_check_bucket = true
 chunk_size = 64M
 EOF
-  
-  if [ $last_success_age -gt 0 ]; then
-    if [ $last_full_age -lt 2419200 ]; then
-      previous_backup=$(find "${GITLAB_BACKUPS_DIR}" -maxdepth 1 -mindepth 1 -name "*.tar" | grep "${last_success_start_time}" | tail -1)
-      previous_backup=$(basename "${previous_backup}" | awk 'BEGIN{FS="_gitlab"}{print $1}')
-      info "Starting a GitLab Incremental Backup.  PREVIOUS_BACKUP=${previous_backup}"
-      docker exec "${OMNIBUS_CONTAINER_NAME}" gitlab-backup create SKIP=${OMNIBUS_SKIP_OBJECTS} INCREMENTAL=yes PREVIOUS_BACKUP=${previous_backup}; echo $? >/etc/gitlab-backups/current_exit_code;
-      current_backup_result=$(cat /etc/gitlab-backups/current_exit_code)
-      if [ $current_backup_result -ne 0 ]; then
-        info "Starting a GitLab Full Backup due to incremental backup failure."
-        docker exec "${OMNIBUS_CONTAINER_NAME}" gitlab-backup create SKIP=${OMNIBUS_SKIP_OBJECTS} ; echo $? >/etc/gitlab-backups/current_exit_code;  
-      else
-        incremental_backup=1
-      fi
-    else
-      info "Starting a GitLab Full Backup."
-      docker exec "${OMNIBUS_CONTAINER_NAME}" gitlab-backup create SKIP=${OMNIBUS_SKIP_OBJECTS} ; echo $? >/etc/gitlab-backups/current_exit_code;
-    fi
+
+if [ $last_success_age -gt 0 ]; then
+  if [ $last_full_age -lt 2419200 ]; then
+    previous_backup=$(find "${GITLAB_BACKUPS_DIR}" -maxdepth 1 -mindepth 1 -name "*.tar" | grep "${last_success_start_time}" | tail -1)
+    previous_backup=$(basename "${previous_backup}" | awk 'BEGIN{FS="_gitlab"}{print $1}')
+    info "Starting a GitLab Incremental Backup.  PREVIOUS_BACKUP=${previous_backup}"
+    docker exec "${OMNIBUS_CONTAINER_NAME}" gitlab-backup create SKIP=${OMNIBUS_SKIP_OBJECTS} INCREMENTAL=yes PREVIOUS_BACKUP=${previous_backup}; echo $? >/etc/gitlab-backups/current_exit_code;
     current_backup_result=$(cat /etc/gitlab-backups/current_exit_code)
-  else
-    printf '%b\n' "Most recent successful backup was only $last_success_age seconds ago."
-    current_backup_skipped=1
-  fi
-
-  # TODO: We also need the secrets files gitlab.rb and gitlab-secrets.json
-  docker exec "${OMNIBUS_CONTAINER_NAME}" cat /etc/gitlab/gitlab.rb >"${GITLAB_BACKUPS_DIR}/gitlab.rb"
-  docker exec "${OMNIBUS_CONTAINER_NAME}" cat /etc/gitlab/gitlab-secrets.json >"${GITLAB_BACKUPS_DIR}/gitlab-secrets.json"
-
-  find "${GITLAB_BACKUPS_DIR}" -maxdepth 1 -mindepth 1 -name "*.tar" > /tmp/file_list_after
-  IFS=$'\n' read -d '' -r -a new_files < <(diff -ruN /etc/gitlab-backups/file_list_before /tmp/file_list_after | grep -v '^\+++' | grep '^\+')
-
-  current_start_time=0
-  for file in "${new_files[@]}"; do
-    abs_file=$(printf '%s' "${file}" | sed 's/^\+//g')
-    rel_file=$(basename "${abs_file}")
-    if [ ! "" == "${abs_file}" ]; then
-      verbose "New file was created: ${abs_file}"
-      tar --append -f "${abs_file}" "${GITLAB_BACKUPS_DIR}/gitlab.rb"
-      tar --append -f "${abs_file}" "${GITLAB_BACKUPS_DIR}/gitlab-secrets.json"
-      tar --list -f "${abs_file}"
-      debug "pv \"${abs_file}\" | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass [MASKED] | rclone --config /tmp/rclone.conf rcat \"wasabi:${S3_BUCKET}/${rel_file}\""
-      pv "${abs_file}" | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass "${OPENSSL_PASS}" | rclone --config /tmp/rclone.conf rcat "wasabi:${S3_BUCKET}/${rel_file}"
-      current_copy_exit_code=0 #$(( TODO: $PIPESTATUS[0]??? ))
-
-      printf '%s' "PIPESTATUS: ${PIPESTATUS[0]} ${PIPESTATUS[1]} ${PIPESTATUS[2]} ${PIPESTATUS[3]}"
-      #$current_copy_exit_code=$(( $current_copy_exit_code + ${PIPESTATUS[0]} + ${PIPESTATUS[1]} + ${PIPESTATUS[2]} ))
-
-      this_start_time=$(printf '%b' "${rel_file}" | awk 'BEGIN{FS="_"}{print $1}')
-      if [ $this_start_time -gt $current_start_time ]; then
-        current_start_time=$this_start_time
-      fi
-    fi
-  done
-
-  if [ $current_copy_exit_code -eq 0 ] && [ $current_backup_result -eq 0 ]; then
-    if [ $incremental_backup -gt 0 ]; then
-      printf '%b' "${current_start_time}" > /etc/gitlab-backups/last_incremental_success_start_time
+    if [ $current_backup_result -ne 0 ]; then
+      info "Starting a GitLab Full Backup due to incremental backup failure."
+      docker exec "${OMNIBUS_CONTAINER_NAME}" gitlab-backup create SKIP=${OMNIBUS_SKIP_OBJECTS} ; echo $? >/etc/gitlab-backups/current_exit_code;  
     else
-      printf '%b' "${current_start_time}" > /etc/gitlab-backups/last_full_success_start_time
+      incremental_backup=1
     fi
-    cat /tmp/file_list_after >/etc/gitlab-backups/file_list_before
-    
-    # TODO: cleanup local files
-
-    # TODO: cleanup remote files
-  elif [ $current_backup_skipped -lt 1 ]; then
-    error "Backup or upload process failed."
+  else
+    info "Starting a GitLab Full Backup."
+    docker exec "${OMNIBUS_CONTAINER_NAME}" gitlab-backup create SKIP=${OMNIBUS_SKIP_OBJECTS} ; echo $? >/etc/gitlab-backups/current_exit_code;
   fi
+  current_backup_result=$(cat /etc/gitlab-backups/current_exit_code)
+else
+  printf '%b\n' "Most recent successful backup was only $last_success_age seconds ago."
+  current_backup_skipped=1
+fi
 
-  info "Backup process complete.  Will now take a nap."
-  sleep 3600
+# TODO: We also need the secrets files gitlab.rb and gitlab-secrets.json
+docker exec "${OMNIBUS_CONTAINER_NAME}" cat /etc/gitlab/gitlab.rb >"${GITLAB_BACKUPS_DIR}/gitlab.rb"
+docker exec "${OMNIBUS_CONTAINER_NAME}" cat /etc/gitlab/gitlab-secrets.json >"${GITLAB_BACKUPS_DIR}/gitlab-secrets.json"
+
+find "${GITLAB_BACKUPS_DIR}" -maxdepth 1 -mindepth 1 -name "*.tar" > /tmp/file_list_after
+IFS=$'\n' read -d '' -r -a new_files < <(diff -ruN /etc/gitlab-backups/file_list_before /tmp/file_list_after | grep -v '^\+++' | grep '^\+')
+
+current_start_time=0
+for file in "${new_files[@]}"; do
+  abs_file=$(printf '%s' "${file}" | sed 's/^\+//g')
+  rel_file=$(basename "${abs_file}")
+  if [ ! "" == "${abs_file}" ]; then
+    verbose "New file was created: ${abs_file}"
+    tar --append -f "${abs_file}" "${GITLAB_BACKUPS_DIR}/gitlab.rb"
+    tar --append -f "${abs_file}" "${GITLAB_BACKUPS_DIR}/gitlab-secrets.json"
+    tar --list -f "${abs_file}"
+    debug "pv \"${abs_file}\" | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass [MASKED] | rclone --config /tmp/rclone.conf rcat \"wasabi:${S3_BUCKET}/${rel_file}\""
+    pv "${abs_file}" | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass "${OPENSSL_PASS}" | rclone --config /tmp/rclone.conf rcat "wasabi:${S3_BUCKET}/${rel_file}"
+    current_copy_exit_code=0 #$(( TODO: $PIPESTATUS[0]??? ))
+
+    printf '%s' "PIPESTATUS: ${PIPESTATUS[0]} ${PIPESTATUS[1]} ${PIPESTATUS[2]} ${PIPESTATUS[3]}"
+    #$current_copy_exit_code=$(( $current_copy_exit_code + ${PIPESTATUS[0]} + ${PIPESTATUS[1]} + ${PIPESTATUS[2]} ))
+
+    this_start_time=$(printf '%b' "${rel_file}" | awk 'BEGIN{FS="_"}{print $1}')
+    if [ $this_start_time -gt $current_start_time ]; then
+      current_start_time=$this_start_time
+    fi
+  fi
 done
+
+if [ $current_copy_exit_code -eq 0 ] && [ $current_backup_result -eq 0 ]; then
+  if [ $incremental_backup -gt 0 ]; then
+    printf '%b' "${current_start_time}" > /etc/gitlab-backups/last_incremental_success_start_time
+  else
+    printf '%b' "${current_start_time}" > /etc/gitlab-backups/last_full_success_start_time
+  fi
+  cat /tmp/file_list_after >/etc/gitlab-backups/file_list_before
+  
+  # TODO: cleanup local files
+
+  # TODO: cleanup remote files
+elif [ $current_backup_skipped -lt 1 ]; then
+  error "Backup or upload process failed."
+fi
+
+sleep 1200
