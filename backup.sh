@@ -104,7 +104,7 @@ if [ "${all_remote_objects_count}" -gt "${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP:-14}"
     all_remote_objects=$(printf '%s' "${all_remote_objects}" | jq ".[$i].UnixTime = ${object_date}")
   done
 
-  old_objects=$(printf '%s' "${all_remote_objects}" | jq "[ .[] | select((.UnixTime | tonumber) > $minimum_timestamp_of_backup) ]")
+  old_objects=$(printf '%s' "${all_remote_objects}" | jq "[ .[] | select((.UnixTime | tonumber) < $minimum_timestamp_of_backup) ]")
   old_objects_count=$(printf '%s' "${old_objects}" | jq "length")
   for (( i=0; i<$old_objects_count; i++ )) do
     object_name=$(printf '%s' "${old_objects}" | jq -r ".[$i].Name")

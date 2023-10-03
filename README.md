@@ -36,7 +36,7 @@ Create two users:
 Each new user will have an "ARN".  This ARN will be used in the Access Policies.
 
 ### Access policies
-The [pages.git.ghanima.net Bucket's Access Policy](arn:aws:s3:::pages.git.ghanima.net.json)
+The [pages.git.ghanima.net Bucket's Access Policy](arn-aws-s3---pages.git.ghanima.net.json)
 allows the "git.ghanima.net" user read-write access to the bucket contents but
 allows the "pages.ghanima.net" user read-only access.
 
@@ -48,7 +48,7 @@ with the ARN of the "git.ghanima.net" user.
   and `"Resource": "arn:aws:s3:::pages.git.ghanima.net"` (1) with the ARN of
   the backups.git.ghanima.net bucket.
 
-The [backups.git.ghanima.net Bucket's Access Policy](arn:aws:s3:::backups.git.ghanima.net.json)
+The [backups.git.ghanima.net Bucket's Access Policy](arn-aws-s3---backups.git.ghanima.net.json)
 allows the "git.ghanima.net" user read-write access to the bucket.
 
 * Replace instances of `"AWS": "arn:aws:iam::100000190796:user/git.ghanima.net"`
