@@ -130,7 +130,7 @@ current_backup_result=1
 current_backup_skipped=0
 
 apt update 2> >(error "apt update: ") > >(debug "apt update: ")
-apt install -y rclone docker.io pv jq 2> >(error "apt install: ") > >(debug "apt install: ")
+apt install -y rclone docker.io pv jq 2> >(grep -v "since apt-utils is not installed" | error "apt install: ") > >(debug "apt install: ")
 
 ls -la /etc/gitlab-nackups 2> >(error "ls: ") > >(debug "ls: ")
 
@@ -175,7 +175,7 @@ no_check_bucket = true
 chunk_size = 64M
 EOF
 
-if [ $last_success_age -gt 0 ]; then
+if [ $last_success_age -gt 3600 ]; then
   if [ $last_full_age -lt 2419200 ]; then
     previous_backup=$(find "${GITLAB_BACKUPS_DIR}" -maxdepth 1 -mindepth 1 -name "*.tar" | grep "${last_success_start_time}" | tail -1)
     previous_backup=$(basename "${previous_backup}" | awk 'BEGIN{FS="_gitlab"}{print $1}')
@@ -194,7 +194,7 @@ if [ $last_success_age -gt 0 ]; then
   fi
   current_backup_result=$(cat /etc/gitlab-backups/current_exit_code)
 else
-  printf '%b\n' "Most recent successful backup was only $last_success_age seconds ago."
+  printf '%b\n' "Most recent successful backup was only $last_success_age seconds ago." | info
   current_backup_skipped=1
 fi
 
