@@ -12,6 +12,9 @@ S3_ENDPOINT="${S3_ENDPOINT:-"s3.wasabisys.com"}"
 S3_BUCKET="${S3_BUCKET:-"backups"}"
 GITLAB_BACKUPS_DIR="${GITLAB_BACKUPS_DIR:-"/var/backups/gitlab"}"
 
+MINIMUM_COUNT_OF_BACKUPS_TO_KEEP=14
+MINIMUM_AGE_OF_BACKUP_TO_DELETE=14
+
 RED='\033[1;31m'
 GREEN='\033[1;32m'
 YELLOW='\033[1;33m'
@@ -88,7 +91,17 @@ no_check_bucket = true
 chunk_size = 64M
 EOF
 
-rclone --config /tmp/rclone.conf lsjson "wasabi:${S3_BUCKET}/"
+all_remote_objects=$(rclone --config /tmp/rclone.conf lsjson "wasabi:${S3_BUCKET}/")
+printf '%s' "${all_remote_objects}" | jq
+if [ $(printf '%s' "${all_remote_obejcts}" | jq "length") -gt ${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP} ]; then
+  info "More than ${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP} backups exist in the remote repository.  Looking for candidates to prune."
+  for (( i=0; i<$count; i++ )) do
+    object_name=$(printf '%s' "${ALLOBJECTS}" | jq ".[$i].Name")
+    object_date=$(printf '%s' "${object_name}" | awk 'BEGIN{FS="_"}{print $1}')
+    all_remote_objects=$(printf '%s' "${all_remote_objects}" | jq ".[$i].Date = \"${object_date}\"")
+  done
+fi
+printf '%s' "${all_remote_objects}" | jq
 exit
 
 if [ $last_success_age -gt 0 ]; then
