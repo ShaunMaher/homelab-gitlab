@@ -204,8 +204,8 @@ docker exec "${OMNIBUS_CONTAINER_NAME}" cat /etc/gitlab/gitlab.rb >"${GITLAB_BAC
 docker exec "${OMNIBUS_CONTAINER_NAME}" cat /etc/gitlab/gitlab-secrets.json >"${GITLAB_BACKUPS_DIR}/gitlab-secrets.json" 2> >(error "docker exec: ") > >(debug "docker exec: ")
 
 find "${GITLAB_BACKUPS_DIR}" -maxdepth 1 -mindepth 1 -name "*.tar" > /tmp/file_list_after
-if [ -f /etc/gitlab-backups/file_list_after ]; then
-  cat /etc/gitlab-backups/file_list_after | debug "file_list_after: "
+if [ -f /tmp/file_list_after ]; then
+  cat /tmp/file_list_after | debug "file_list_after: "
 fi
 IFS=$'\n' read -d '' -r -a new_files < <(diff -ruN /etc/gitlab-backups/file_list_before /tmp/file_list_after | grep -v '^\+++' | grep '^\+')
 
@@ -235,10 +235,10 @@ for file in "${new_files[@]}"; do
   fi
 done
 
-if [ $current_copy_exit_code -eq 0 ] && [ $current_backup_result -eq 0 ]; then
-  if [ $incremental_backup -gt 0 ]; then
+if [ $current_copy_exit_code -eq 0 ] && ([ $current_backup_result -eq 0 ] || [ $current_backup_skipped -eq 1 ]); then
+  if [ $incremental_backup -gt 0 ] && [ $current_backup_result -eq 0 ]; then
     printf '%b' "${current_start_time}" > /etc/gitlab-backups/last_incremental_success_start_time
-  else
+  elif [ $current_backup_result -eq 0 ]; then
     printf '%b' "${current_start_time}" > /etc/gitlab-backups/last_full_success_start_time
   fi
   cat /tmp/file_list_after >/etc/gitlab-backups/file_list_before
