@@ -155,6 +155,8 @@ echo "last_success_start_time: $last_success_start_time" | debug
 echo "last_success_age: $last_success_age" | debug
 date +%s > /etc/gitlab-backups/current_start_time
 if [ -f /etc/gitlab-backups/file_list_before ]; then
+  cat /etc/gitlab-backups/file_list_before | sort | uniq | grep -v '^$' > /tmp/file_list_before
+  cat /tmp/file_list_before >/etc/gitlab-backups/file_list_before
   cat /etc/gitlab-backups/file_list_before | debug "file_list_before: "
 fi
 
