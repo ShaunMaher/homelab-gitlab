@@ -211,6 +211,7 @@ IFS=$'\n' read -d '' -r -a new_files < <(diff -ruN /etc/gitlab-backups/file_list
 
 current_start_time=0
 for file in "${new_files[@]}"; do
+  $current_copy_exit_code=0
   abs_file=$(printf '%s' "${file}" | sed 's/^\+//g')
   rel_file=$(basename "${abs_file}")
   if [ ! "" == "${abs_file}" ]; then
@@ -221,10 +222,11 @@ for file in "${new_files[@]}"; do
     # TODO: tweak chunk size based on backup file size
     debug "pv \"${abs_file}\" | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass [MASKED] | rclone --config /tmp/rclone.conf rcat \"wasabi:${S3_BUCKET}/${rel_file}\""
     pv "${abs_file}" 2> >(error "pv: ") | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass "${OPENSSL_PASS}" 2> >(error "openssl: ") | rclone --config /tmp/rclone.conf rcat "wasabi:${S3_BUCKET}/${rel_file}" 2> >(error "rclone: ") > >(debug "rclone: ")
-    current_copy_exit_code=0 #$(( TODO: $PIPESTATUS[0]??? ))
 
-    printf '%s' "PIPESTATUS: ${PIPESTATUS[0]} ${PIPESTATUS[1]} ${PIPESTATUS[2]} ${PIPESTATUS[3]}"
-    #$current_copy_exit_code=$(( $current_copy_exit_code + ${PIPESTATUS[0]} + ${PIPESTATUS[1]} + ${PIPESTATUS[2]} ))
+    $current_copy_exit_code=$(( ${PIPESTATUS[0]:-0} + ${PIPESTATUS[1]:-0} + ${PIPESTATUS[2]:-0} ))
+    if [ $current_copy_exit_code -eq 0 ]; then
+      printf '\n%s\n' "${abs_file}" >>/etc/gitlab-backups/file_list_before
+    fi
 
     # TODO: check the size of the object in cloud storage matches the local size
 
@@ -235,17 +237,15 @@ for file in "${new_files[@]}"; do
   fi
 done
 
-if [ $current_copy_exit_code -eq 0 ] && ([ $current_backup_result -eq 0 ] || [ $current_backup_skipped -eq 1 ]); then
+if [ $current_backup_result -eq 0 ]; then
   if [ $incremental_backup -gt 0 ] && [ $current_backup_result -eq 0 ]; then
     printf '%b' "${current_start_time}" > /etc/gitlab-backups/last_incremental_success_start_time
   elif [ $current_backup_result -eq 0 ]; then
     printf '%b' "${current_start_time}" > /etc/gitlab-backups/last_full_success_start_time
   fi
-  cat /tmp/file_list_after >/etc/gitlab-backups/file_list_before
-  if [ -f /tmp/file_list_after ]; then
-    cat /tmp/file_list_after | debug "file_list_after: "
-  fi
-  
+fi
+
+if [ $current_backup_result -eq 0 ] || [ $current_backup_skipped -eq 1 ]; then
   # TODO: cleanup local files
 
   # cleanup remote files that are too old
@@ -278,5 +278,7 @@ elif [ $current_backup_skipped -lt 1 ]; then
 fi
 
 if [ -f /etc/gitlab-backups/file_list_before ]; then
+  cat /etc/gitlab-backups/file_list_before | sort | uniq | grep -v '^$' > /tmp/file_list_before
+  cat /tmp/file_list_before >/etc/gitlab-backups/file_list_before
   cat /etc/gitlab-backups/file_list_before | debug "file_list_before: "
 fi
