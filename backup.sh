@@ -12,8 +12,10 @@ S3_ENDPOINT="${S3_ENDPOINT:-"s3.wasabisys.com"}"
 S3_BUCKET="${S3_BUCKET:-"backups"}"
 GITLAB_BACKUPS_DIR="${GITLAB_BACKUPS_DIR:-"/var/backups/gitlab"}"
 
-MINIMUM_COUNT_OF_BACKUPS_TO_KEEP=14
-MINIMUM_AGE_OF_BACKUP_TO_DELETE=14
+MINIMUM_COUNT_OF_BACKUPS_TO_KEEP="${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP:-14}"
+#MINIMUM_AGE_OF_BACKUP_TO_DELETE="${MINIMUM_AGE_OF_BACKUP_TO_DELETE:-1209600}" # 14 days
+MINIMUM_AGE_OF_BACKUP_TO_DELETE="${MINIMUM_AGE_OF_BACKUP_TO_DELETE:-3600}" # 1 hour
+minimum_timestamp_of_backup=$(( $(date +%s) - $MINIMUM_AGE_OF_BACKUP_TO_DELETE ))
 
 RED='\033[1;31m'
 GREEN='\033[1;32m'
@@ -102,7 +104,7 @@ if [ "${all_remote_objects_count}" -gt "${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP:-14}"
     all_remote_objects=$(printf '%s' "${all_remote_objects}" | jq ".[$i].UnixTime = ${object_date}")
   done
 
-  old_objects=$(printf '%s' "${all_remote_objects}" | jq "[ .[] | select((.UnixTime | tonumber) > 1696280671) ]")
+  old_objects=$(printf '%s' "${all_remote_objects}" | jq "[ .[] | select((.UnixTime | tonumber) > $minimum_timestamp_of_backup) ]")
   old_objects_count=$(printf '%s' "${old_objects}" | jq "length")
   for (( i=0; i<$old_objects_count; i++ )) do
     object_name=$(printf '%s' "${old_objects}" | jq -r ".[$i].Name")
@@ -112,7 +114,6 @@ if [ "${all_remote_objects_count}" -gt "${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP:-14}"
     debug "rclone rm \"wasabi:${S3_BUCKET}/${object_path}\""
   done
 fi
-#printf '%s' "${all_remote_objects}" | jq
 exit
 
 if [ $last_success_age -gt 0 ]; then
