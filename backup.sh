@@ -13,8 +13,8 @@ S3_BUCKET="${S3_BUCKET:-"backups"}"
 GITLAB_BACKUPS_DIR="${GITLAB_BACKUPS_DIR:-"/var/backups/gitlab"}"
 
 MINIMUM_COUNT_OF_BACKUPS_TO_KEEP="${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP:-14}"
-#MINIMUM_AGE_OF_BACKUP_TO_DELETE="${MINIMUM_AGE_OF_BACKUP_TO_DELETE:-1209600}" # 14 days
-MINIMUM_AGE_OF_BACKUP_TO_DELETE="${MINIMUM_AGE_OF_BACKUP_TO_DELETE:-3600}" # 1 hour
+MINIMUM_AGE_OF_BACKUP_TO_DELETE="${MINIMUM_AGE_OF_BACKUP_TO_DELETE:-1209600}" # 14 days
+#MINIMUM_AGE_OF_BACKUP_TO_DELETE="${MINIMUM_AGE_OF_BACKUP_TO_DELETE:-3600}" # 1 hour
 minimum_timestamp_of_backup=$(( $(date +%s) - $MINIMUM_AGE_OF_BACKUP_TO_DELETE ))
 
 RED='\033[1;31m'
@@ -110,11 +110,10 @@ if [ "${all_remote_objects_count}" -gt "${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP:-14}"
     object_name=$(printf '%s' "${old_objects}" | jq -r ".[$i].Name")
     object_path=$(printf '%s' "${old_objects}" | jq -r ".[$i].Path")
     object_date=$(printf '%s' "${old_objects}" | jq -r ".[$i].UnixTime")
-    info "Backup '${object_name}', created $(date -d "@${object_date}") is more than ${MINIMUM_AGE_OF_BACKUP_TO_DELETE} days old.  It can be pruned."
+    info "Backup '${object_name}', created $(date -d "@${object_date}") is more than ${MINIMUM_AGE_OF_BACKUP_TO_DELETE} seconds old.  It can be pruned."
     debug "rclone rm \"wasabi:${S3_BUCKET}/${object_path}\""
   done
 fi
-exit
 
 if [ $last_success_age -gt 0 ]; then
   if [ $last_full_age -lt 2419200 ]; then
