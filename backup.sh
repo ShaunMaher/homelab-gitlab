@@ -17,31 +17,111 @@ MINIMUM_AGE_OF_BACKUP_TO_DELETE="${MINIMUM_AGE_OF_BACKUP_TO_DELETE:-1209600}" # 
 #MINIMUM_AGE_OF_BACKUP_TO_DELETE="${MINIMUM_AGE_OF_BACKUP_TO_DELETE:-3600}" # 1 hour
 minimum_timestamp_of_backup=$(( $(date +%s) - $MINIMUM_AGE_OF_BACKUP_TO_DELETE ))
 
-RED='\033[1;31m'
-GREEN='\033[1;32m'
-YELLOW='\033[1;33m'
-GRAY='\033[1;90m'
-NC='\033[0m' # No Color
-
 #sleep $(( $RANDOM % 3600 ))
 
 apt update
 apt install -y rclone docker.io pv jq
 
+# These are not used by the relevant functions yet
+VERBOSE="${VERBOSE:-"/dev/stderr"}"
+DEBUG="${DEBUG:-"/dev/stderr"}"
+INFO="${INFO:-"/dev/stdout"}"
+ERROR="${ERROR:-"/dev/stderr"}"
+
+ANSI_COLOUR_RED='\033[1;31m'
+ANSI_COLOUR_GREEN='\033[1;32m'
+ANSI_COLOUR_YELLOW='\033[1;33m'
+ANSI_COLOUR_GRAY='\033[1;90m'
+
+ANSI_COLOUR_NO_COLOUR='\033[0m'
+ANSI_COLOUR_ERROR="${ANSI_COLOUR_RED:-'\033[1;31m'}"
+ANSI_COLOUR_INFO="${ANSI_COLOUR_GREEN:-'\033[1;31m'}"
+ANSI_COLOUR_VERBOSE="${ANSI_COLOUR_YELLOW:-'\033[1;31m'}"
+ANSI_COLOUR_DEBUG="${ANSI_COLOUR_GRAY:-'\033[1;31m'}"
+
+__OUTER_STDIN_NAME=$(readlink -f /dev/stdin)
+
+
 function verbose() {
-  printf '%b\n' "${YELLOW}${1}${NC}"
+  # Every method I could find that tries to work out if we are receiving data
+  # on stdin always seems to return true inside a GitLab runner.  I don't know
+  # why.  The following tests to see if there is a /dev/stdin AND that
+  # /dev/stdin is NOT the same as the /dev/stdin passed to the entire script.
+  if [[ -p /dev/stdin ]] && [ $(readlink -f /dev/stdin) != "${__OUTER_STDIN_NAME}" ]; then
+    while IFS= read -r LINE; do
+      printf "${ANSI_COLOUR_VERBOSE}%s${ANSI_COLOUR_NO_COLOUR}\n" "${1}${LINE}"
+    done < <(cat </dev/stdin)
+  elif [ ${#1} -gt 0 ]; then
+    printf "${ANSI_COLOUR_VERBOSE}%s${ANSI_COLOUR_NO_COLOUR}\n" "${1}"
+  fi
 }
 
 function debug() {
-  printf '%b\n' "${GRAY}${1}${NC}"
+  if [[ -p /dev/stdin ]] && [ $(readlink -f /dev/stdin) != "${__OUTER_STDIN_NAME}" ]; then
+    while IFS= read -r LINE; do
+      printf "${ANSI_COLOUR_DEBUG}%s${ANSI_COLOUR_NO_COLOUR}\n" "${1}${LINE}"
+    done < <(cat </dev/stdin)
+  elif [ ${#1} -gt 0 ]; then
+    printf "${ANSI_COLOUR_DEBUG}%s${ANSI_COLOUR_NO_COLOUR}\n" "${1}"
+  fi
 }
 
 function info() {
-  printf '%b\n' "${GREEN}${1}${NC}"
+  if [[ -p /dev/stdin ]] && [ $(readlink -f /dev/stdin) != "${__OUTER_STDIN_NAME}" ]; then
+    while IFS= read -r LINE; do
+      printf "${ANSI_COLOUR_INFO}%s${ANSI_COLOUR_NO_COLOUR}\n" "${1}${LINE}"
+    done < <(cat </dev/stdin)
+  elif [ ${#1} -gt 0 ]; then
+    printf "${ANSI_COLOUR_INFO}%s${ANSI_COLOUR_NO_COLOUR}\n" "${1}"
+  fi
 }
 
 function error() {
-  printf '%b\n' "${RED}${1}${NC}"
+  if [[ -p /dev/stdin ]] && [ $(readlink -f /dev/stdin) != "${__OUTER_STDIN_NAME}" ]; then
+    while IFS= read -r LINE; do
+      if [ $(printf '%s' "${LINE}" | grep -c -i 'WARN') -gt 0 ]; then
+        printf "${ANSI_COLOUR_VERBOSE}%s${ANSI_COLOUR_NO_COLOUR}\n" "${1}${LINE}"
+      elif [ ${#LINE} -lt 1 ]; then
+        printf "${ANSI_COLOUR_DEBUG}%s${ANSI_COLOUR_NO_COLOUR}\n" "${1}${LINE}"
+      elif [ $(printf '%b' "${LINE}" | grep -c -i 'NOTICE') -gt 0 ]; then
+        printf "${ANSI_COLOUR_DEBUG}%s${ANSI_COLOUR_NO_COLOUR}\n" "${1}${LINE}"
+      else
+        printf "${ANSI_COLOUR_ERROR}%s${ANSI_COLOUR_NO_COLOUR}\n" "${1}${LINE}"
+      fi
+    done < <(cat </dev/stdin)
+  elif [ ${#1} -gt 0 ]; then
+    printf "${ANSI_COLOUR_ERROR}%s${ANSI_COLOUR_NO_COLOUR}\n" "${1}"
+  fi
+}
+
+function ltrim() {
+  if [[ -p /dev/stdin ]] && [ $(readlink -f /dev/stdin) != "${__OUTER_STDIN_NAME}" ]; then
+    while IFS= read -r LINE; do
+      printf '%s' "${LINE}" | sed -e 's/^[[:space:]]*//'
+    done < <(cat </dev/stdin)
+  elif [ ${#1} -gt 0 ]; then
+    printf '%s' "${1}" | sed -e 's/^[[:space:]]*//'
+  fi
+}
+
+function rtrim() {
+  if [[ -p /dev/stdin ]] && [ $(readlink -f /dev/stdin) != "${__OUTER_STDIN_NAME}" ]; then
+    while IFS= read -r LINE; do
+      printf '%s' "${LINE}" | sed -e 's/[[:space:]]*$//'
+    done < <(cat </dev/stdin)
+  elif [ ${#1} -gt 0 ]; then
+    printf '%s' "${1}" | sed -e 's/[[:space:]]*$//'
+  fi
+}
+
+function trim() {
+  if [[ -p /dev/stdin ]] && [ $(readlink -f /dev/stdin) != "${__OUTER_STDIN_NAME}" ]; then
+    while IFS= read -r LINE; do
+      printf '%s' "${LINE}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+    done < <(cat </dev/stdin)
+  elif [ ${#1} -gt 0 ]; then
+    printf '%s' "${1}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+  fi
 }
 
 last_incremental_success_start_time=0
@@ -93,44 +173,22 @@ no_check_bucket = true
 chunk_size = 64M
 EOF
 
-all_remote_objects=$(rclone --config /tmp/rclone.conf lsjson "wasabi:${S3_BUCKET}/")
-printf '%s' "${all_remote_objects}" | jq
-all_remote_objects_count=$(printf '%s' "${all_remote_objects}" | jq "length")
-if [ "${all_remote_objects_count}" -gt "${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP:-14}" ]; then
-  info "More than ${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP} backups exist in the remote repository.  Looking for candidates to prune."
-  for (( i=0; i<$all_remote_objects_count; i++ )) do
-    object_name=$(printf '%s' "${all_remote_objects}" | jq -r ".[$i].Name")
-    object_date=$(printf '%s' "${object_name}" | awk 'BEGIN{FS="_"}{print $1}')
-    all_remote_objects=$(printf '%s' "${all_remote_objects}" | jq ".[$i].UnixTime = ${object_date}")
-  done
-
-  old_objects=$(printf '%s' "${all_remote_objects}" | jq "[ .[] | select((.UnixTime | tonumber) < $minimum_timestamp_of_backup) ]")
-  old_objects_count=$(printf '%s' "${old_objects}" | jq "length")
-  for (( i=0; i<$old_objects_count; i++ )) do
-    object_name=$(printf '%s' "${old_objects}" | jq -r ".[$i].Name")
-    object_path=$(printf '%s' "${old_objects}" | jq -r ".[$i].Path")
-    object_date=$(printf '%s' "${old_objects}" | jq -r ".[$i].UnixTime")
-    info "Backup '${object_name}', created $(date -d "@${object_date}") is more than ${MINIMUM_AGE_OF_BACKUP_TO_DELETE} seconds old.  It can be pruned."
-    debug "rclone rm \"wasabi:${S3_BUCKET}/${object_path}\""
-  done
-fi
-
 if [ $last_success_age -gt 0 ]; then
   if [ $last_full_age -lt 2419200 ]; then
     previous_backup=$(find "${GITLAB_BACKUPS_DIR}" -maxdepth 1 -mindepth 1 -name "*.tar" | grep "${last_success_start_time}" | tail -1)
     previous_backup=$(basename "${previous_backup}" | awk 'BEGIN{FS="_gitlab"}{print $1}')
     info "Starting a GitLab Incremental Backup.  PREVIOUS_BACKUP=${previous_backup}"
-    docker exec "${OMNIBUS_CONTAINER_NAME}" gitlab-backup create SKIP=${OMNIBUS_SKIP_OBJECTS} INCREMENTAL=yes PREVIOUS_BACKUP=${previous_backup}; echo $? >/etc/gitlab-backups/current_exit_code;
+    docker exec "${OMNIBUS_CONTAINER_NAME}" gitlab-backup create SKIP=${OMNIBUS_SKIP_OBJECTS} INCREMENTAL=yes PREVIOUS_BACKUP=${previous_backup}2> >(error "docker exec: gitlab-backup create: ") > >(debug "docker exec: gitlab-backup create: "); echo $? >/etc/gitlab-backups/current_exit_code;
     current_backup_result=$(cat /etc/gitlab-backups/current_exit_code)
     if [ $current_backup_result -ne 0 ]; then
       info "Starting a GitLab Full Backup due to incremental backup failure."
-      docker exec "${OMNIBUS_CONTAINER_NAME}" gitlab-backup create SKIP=${OMNIBUS_SKIP_OBJECTS} ; echo $? >/etc/gitlab-backups/current_exit_code;  
+      docker exec "${OMNIBUS_CONTAINER_NAME}" gitlab-backup create SKIP=${OMNIBUS_SKIP_OBJECTS} 2> >(error "docker exec: gitlab-backup create: ") > >(debug "docker exec: gitlab-backup create: "); echo $? >/etc/gitlab-backups/current_exit_code;  
     else
       incremental_backup=1
     fi
   else
     info "Starting a GitLab Full Backup."
-    docker exec "${OMNIBUS_CONTAINER_NAME}" gitlab-backup create SKIP=${OMNIBUS_SKIP_OBJECTS} ; echo $? >/etc/gitlab-backups/current_exit_code;
+    docker exec "${OMNIBUS_CONTAINER_NAME}" gitlab-backup create SKIP=${OMNIBUS_SKIP_OBJECTS} 2> >(error "docker exec: gitlab-backup create: ") > >(debug "docker exec: gitlab-backup create: "); echo $? >/etc/gitlab-backups/current_exit_code;
   fi
   current_backup_result=$(cat /etc/gitlab-backups/current_exit_code)
 else
@@ -139,8 +197,8 @@ else
 fi
 
 # TODO: We also need the secrets files gitlab.rb and gitlab-secrets.json
-docker exec "${OMNIBUS_CONTAINER_NAME}" cat /etc/gitlab/gitlab.rb >"${GITLAB_BACKUPS_DIR}/gitlab.rb"
-docker exec "${OMNIBUS_CONTAINER_NAME}" cat /etc/gitlab/gitlab-secrets.json >"${GITLAB_BACKUPS_DIR}/gitlab-secrets.json"
+docker exec "${OMNIBUS_CONTAINER_NAME}" cat /etc/gitlab/gitlab.rb >"${GITLAB_BACKUPS_DIR}/gitlab.rb" 2> >(error "docker exec: ") > >(debug "docker exec: ")
+docker exec "${OMNIBUS_CONTAINER_NAME}" cat /etc/gitlab/gitlab-secrets.json >"${GITLAB_BACKUPS_DIR}/gitlab-secrets.json" 2> >(error "docker exec: ") > >(debug "docker exec: ")
 
 find "${GITLAB_BACKUPS_DIR}" -maxdepth 1 -mindepth 1 -name "*.tar" > /tmp/file_list_after
 IFS=$'\n' read -d '' -r -a new_files < <(diff -ruN /etc/gitlab-backups/file_list_before /tmp/file_list_after | grep -v '^\+++' | grep '^\+')
@@ -151,11 +209,11 @@ for file in "${new_files[@]}"; do
   rel_file=$(basename "${abs_file}")
   if [ ! "" == "${abs_file}" ]; then
     verbose "New file was created: ${abs_file}"
-    tar --append -f "${abs_file}" "${GITLAB_BACKUPS_DIR}/gitlab.rb"
-    tar --append -f "${abs_file}" "${GITLAB_BACKUPS_DIR}/gitlab-secrets.json"
-    tar --list -f "${abs_file}"
+    tar --append -f "${abs_file}" "${GITLAB_BACKUPS_DIR}/gitlab.rb" 2> >(error "tar: ") > >(debug "tar: ")
+    tar --append -f "${abs_file}" "${GITLAB_BACKUPS_DIR}/gitlab-secrets.json" 2> >(error "tar: ") > >(debug "tar: ")
+    #tar --list -f "${abs_file}" 2> >(error "tar: ") > >(debug "tar: ")
     debug "pv \"${abs_file}\" | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass [MASKED] | rclone --config /tmp/rclone.conf rcat \"wasabi:${S3_BUCKET}/${rel_file}\""
-    pv "${abs_file}" | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass "${OPENSSL_PASS}" | rclone --config /tmp/rclone.conf rcat "wasabi:${S3_BUCKET}/${rel_file}"
+    pv "${abs_file}" 2> >(error "pv: ") | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass "${OPENSSL_PASS}" 2> >(error "openssl: ") | rclone --config /tmp/rclone.conf rcat "wasabi:${S3_BUCKET}/${rel_file}" 2> >(error "rclone: ") > >(debug "rclone: ")
     current_copy_exit_code=0 #$(( TODO: $PIPESTATUS[0]??? ))
 
     printf '%s' "PIPESTATUS: ${PIPESTATUS[0]} ${PIPESTATUS[1]} ${PIPESTATUS[2]} ${PIPESTATUS[3]}"
@@ -178,7 +236,28 @@ if [ $current_copy_exit_code -eq 0 ] && [ $current_backup_result -eq 0 ]; then
   
   # TODO: cleanup local files
 
-  # TODO: cleanup remote files
+  # cleanup remote files that are too old
+  all_remote_objects=$(rclone --config /tmp/rclone.conf lsjson "wasabi:${S3_BUCKET}/")
+  printf '%s' "${all_remote_objects}" | jq -C | debug "all_remote_objects: "
+  all_remote_objects_count=$(printf '%s' "${all_remote_objects}" | jq "length")
+  if [ "${all_remote_objects_count}" -gt "${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP:-14}" ]; then
+    info "More than ${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP} backups exist in the remote repository.  Looking for candidates to prune."
+    for (( i=0; i<$all_remote_objects_count; i++ )) do
+      object_name=$(printf '%s' "${all_remote_objects}" | jq -r ".[$i].Name")
+      object_date=$(printf '%s' "${object_name}" | awk 'BEGIN{FS="_"}{print $1}')
+      all_remote_objects=$(printf '%s' "${all_remote_objects}" | jq ".[$i].UnixTime = ${object_date}")
+    done
+
+    old_objects=$(printf '%s' "${all_remote_objects}" | jq "[ .[] | select((.UnixTime | tonumber) < $minimum_timestamp_of_backup) ]")
+    old_objects_count=$(printf '%s' "${old_objects}" | jq "length")
+    for (( i=0; i<$old_objects_count; i++ )) do
+      object_name=$(printf '%s' "${old_objects}" | jq -r ".[$i].Name")
+      object_path=$(printf '%s' "${old_objects}" | jq -r ".[$i].Path")
+      object_date=$(printf '%s' "${old_objects}" | jq -r ".[$i].UnixTime")
+      info "Backup '${object_name}', created $(date -d "@${object_date}") is more than ${MINIMUM_AGE_OF_BACKUP_TO_DELETE} seconds old.  It can be pruned."
+      debug "rclone rm \"wasabi:${S3_BUCKET}/${object_path}\""
+    done
+  fi
 elif [ $current_backup_skipped -lt 1 ]; then
   error "Backup or upload process failed."
   sleep 1200
