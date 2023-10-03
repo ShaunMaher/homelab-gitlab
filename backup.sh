@@ -129,10 +129,8 @@ current_copy_exit_code=1
 current_backup_result=1
 current_backup_skipped=0
 
-apt update 2> >(error "apt update: ") > >(debug "apt update: ")
-apt install -y rclone docker.io pv jq 2> >(grep -v "since apt-utils is not installed" | error "apt install: ") > >(debug "apt install: ")
-
-ls -la /etc/gitlab-nackups 2> >(error "ls: ") > >(debug "ls: ")
+apt update 2> >(grep -v 'apt does not have a stable CLI interface' | error "apt update: ") > >(debug "apt update: ")
+apt install -y rclone docker.io pv jq 2> >(grep -v "since apt-utils is not installed" |grep -v 'apt does not have a stable CLI interface' | error "apt install: ") > >(debug "apt install: ")
 
 # Load the timestamps of the most recent successful backups
 if [ -f /etc/gitlab-backups/last_incremental_success_start_time ]; then
@@ -156,6 +154,9 @@ echo "last_incremental_success_start_time: $last_incremental_success_start_time"
 echo "last_success_start_time: $last_success_start_time" | debug
 echo "last_success_age: $last_success_age" | debug
 date +%s > /etc/gitlab-backups/current_start_time
+if [ -f /etc/gitlab-backups/file_list_before ]; then
+  cat /etc/gitlab-backups/file_list_before | debug "file_list_before: "
+fi
 
 # Write Wasabi configuration to rclone conf file
 cat >/tmp/rclone.conf <<- EOF
@@ -210,7 +211,7 @@ for file in "${new_files[@]}"; do
   abs_file=$(printf '%s' "${file}" | sed 's/^\+//g')
   rel_file=$(basename "${abs_file}")
   if [ ! "" == "${abs_file}" ]; then
-    verbose "New file was created: ${abs_file}"
+    echo "New file was created: ${abs_file}" | verbose
     tar --append -f "${abs_file}" "${GITLAB_BACKUPS_DIR}/gitlab.rb" 2> >(grep -v "Removing leading" | error "tar: ") > >(debug "tar: ")
     tar --append -f "${abs_file}" "${GITLAB_BACKUPS_DIR}/gitlab-secrets.json" 2> >(grep -v "Removing leading" | error "tar: ") > >(debug "tar: ")
     #tar --list -f "${abs_file}" 2> >(error "tar: ") > >(debug "tar: ")
@@ -220,6 +221,8 @@ for file in "${new_files[@]}"; do
 
     printf '%s' "PIPESTATUS: ${PIPESTATUS[0]} ${PIPESTATUS[1]} ${PIPESTATUS[2]} ${PIPESTATUS[3]}"
     #$current_copy_exit_code=$(( $current_copy_exit_code + ${PIPESTATUS[0]} + ${PIPESTATUS[1]} + ${PIPESTATUS[2]} ))
+
+    # TODO: check the size of the object in cloud storage matches the local size
 
     this_start_time=$(printf '%b' "${rel_file}" | awk 'BEGIN{FS="_"}{print $1}')
     if [ $this_start_time -gt $current_start_time ]; then
@@ -239,6 +242,8 @@ if [ $current_copy_exit_code -eq 0 ] && [ $current_backup_result -eq 0 ]; then
   # TODO: cleanup local files
 
   # cleanup remote files that are too old
+  # TODO: Only count remote files that match our file naming pattern
+  # TODO: Only count remote files that have a valid looking size
   all_remote_objects=$(rclone --config /tmp/rclone.conf lsjson "wasabi:${S3_BUCKET}/")
   printf '%s' "${all_remote_objects}" | jq -C | debug "all_remote_objects: "
   all_remote_objects_count=$(printf '%s' "${all_remote_objects}" | jq "length")
