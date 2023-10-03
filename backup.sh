@@ -207,11 +207,12 @@ find "${GITLAB_BACKUPS_DIR}" -maxdepth 1 -mindepth 1 -name "*.tar" | sort | uniq
 if [ -f /tmp/file_list_after ]; then
   cat /tmp/file_list_after | debug "file_list_after: "
 fi
+diff -ruN /etc/gitlab-backups/file_list_before /tmp/file_list_after | grep -v '^\+++' | grep '^\+' | debug "diff: "
 IFS=$'\n' read -d '' -r -a new_files < <(diff -ruN /etc/gitlab-backups/file_list_before /tmp/file_list_after | grep -v '^\+++' | grep '^\+')
 
 current_start_time=0
 for file in "${new_files[@]}"; do
-  $current_copy_exit_code=0
+  current_copy_exit_code=0
   abs_file=$(printf '%s' "${file}" | sed 's/^\+//g')
   rel_file=$(basename "${abs_file}")
   if [ ! "" == "${abs_file}" ]; then
@@ -223,7 +224,7 @@ for file in "${new_files[@]}"; do
     debug "pv \"${abs_file}\" | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass [MASKED] | rclone --config /tmp/rclone.conf rcat \"wasabi:${S3_BUCKET}/${rel_file}\""
     pv "${abs_file}" 2> >(error "pv: ") | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass "${OPENSSL_PASS}" 2> >(error "openssl: ") | rclone --config /tmp/rclone.conf rcat "wasabi:${S3_BUCKET}/${rel_file}" 2> >(error "rclone: ") > >(debug "rclone: ")
 
-    $current_copy_exit_code=$(( ${PIPESTATUS[0]:-0} + ${PIPESTATUS[1]:-0} + ${PIPESTATUS[2]:-0} ))
+    current_copy_exit_code=$(( ${PIPESTATUS[0]:-0} + ${PIPESTATUS[1]:-0} + ${PIPESTATUS[2]:-0} ))
     if [ $current_copy_exit_code -eq 0 ]; then
       printf '\n%s\n' "${abs_file}" >>/etc/gitlab-backups/file_list_before
     fi
