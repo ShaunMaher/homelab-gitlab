@@ -102,6 +102,16 @@ if [ "${all_remote_objects_count}" -gt "${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP:-14}"
     object_date=$(printf '%s' "${object_name}" | awk 'BEGIN{FS="_"}{print $1}')
     all_remote_objects=$(printf '%s' "${all_remote_objects}" | jq ".[$i].UnixTime = ${object_date}")
   done
+
+  old_objects=$(printf '%s' "${all_remote_objects}" | jq "[ .[] | select((.UnixTime | tonumber) > 1696280671) ]")
+  old_objects_count=$(printf '%s' "${old_objects}" | jq "length")
+  for (( i=0; i<$old_objects_count; i++ )) do
+    object_name=$(printf '%s' "${old_objects}" | jq -r ".[$i].Name")
+    object_path=$(printf '%s' "${old_objects}" | jq -r ".[$i].Path")
+    object_date=$(printf '%s' "${old_objects}" | jq -r ".[$i].UnixTime")
+    info "Backup '${object_name}', created "$(date -d "@${object_date}")" is more than ${MINIMUM_AGE_OF_BACKUP_TO_DELETE} days old.  It can be pruned."
+    debug "rclone rm \"wasabi:${S3_BUCKET}/${object_path}\""
+  done
 fi
 printf '%s' "${all_remote_objects}" | jq
 exit
