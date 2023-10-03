@@ -204,6 +204,9 @@ docker exec "${OMNIBUS_CONTAINER_NAME}" cat /etc/gitlab/gitlab.rb >"${GITLAB_BAC
 docker exec "${OMNIBUS_CONTAINER_NAME}" cat /etc/gitlab/gitlab-secrets.json >"${GITLAB_BACKUPS_DIR}/gitlab-secrets.json" 2> >(error "docker exec: ") > >(debug "docker exec: ")
 
 find "${GITLAB_BACKUPS_DIR}" -maxdepth 1 -mindepth 1 -name "*.tar" > /tmp/file_list_after
+if [ -f /etc/gitlab-backups/file_list_after ]; then
+  cat /etc/gitlab-backups/file_list_after | debug "file_list_after: "
+fi
 IFS=$'\n' read -d '' -r -a new_files < <(diff -ruN /etc/gitlab-backups/file_list_before /tmp/file_list_after | grep -v '^\+++' | grep '^\+')
 
 current_start_time=0
@@ -215,6 +218,7 @@ for file in "${new_files[@]}"; do
     tar --append -f "${abs_file}" "${GITLAB_BACKUPS_DIR}/gitlab.rb" 2> >(grep -v "Removing leading" | error "tar: ") > >(debug "tar: ")
     tar --append -f "${abs_file}" "${GITLAB_BACKUPS_DIR}/gitlab-secrets.json" 2> >(grep -v "Removing leading" | error "tar: ") > >(debug "tar: ")
     #tar --list -f "${abs_file}" 2> >(error "tar: ") > >(debug "tar: ")
+    # TODO: tweak chunk size based on backup file size
     debug "pv \"${abs_file}\" | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass [MASKED] | rclone --config /tmp/rclone.conf rcat \"wasabi:${S3_BUCKET}/${rel_file}\""
     pv "${abs_file}" 2> >(error "pv: ") | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass "${OPENSSL_PASS}" 2> >(error "openssl: ") | rclone --config /tmp/rclone.conf rcat "wasabi:${S3_BUCKET}/${rel_file}" 2> >(error "rclone: ") > >(debug "rclone: ")
     current_copy_exit_code=0 #$(( TODO: $PIPESTATUS[0]??? ))
@@ -238,6 +242,9 @@ if [ $current_copy_exit_code -eq 0 ] && [ $current_backup_result -eq 0 ]; then
     printf '%b' "${current_start_time}" > /etc/gitlab-backups/last_full_success_start_time
   fi
   cat /tmp/file_list_after >/etc/gitlab-backups/file_list_before
+  if [ -f /etc/gitlab-backups/file_list_after ]; then
+    cat /etc/gitlab-backups/file_list_after | debug "file_list_after: "
+  fi
   
   # TODO: cleanup local files
 
