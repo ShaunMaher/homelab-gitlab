@@ -203,7 +203,7 @@ fi
 docker exec "${OMNIBUS_CONTAINER_NAME}" cat /etc/gitlab/gitlab.rb >"${GITLAB_BACKUPS_DIR}/gitlab.rb" 2> >(error "docker exec: ") > >(debug "docker exec: ")
 docker exec "${OMNIBUS_CONTAINER_NAME}" cat /etc/gitlab/gitlab-secrets.json >"${GITLAB_BACKUPS_DIR}/gitlab-secrets.json" 2> >(error "docker exec: ") > >(debug "docker exec: ")
 
-find "${GITLAB_BACKUPS_DIR}" -maxdepth 1 -mindepth 1 -name "*.tar" > /tmp/file_list_after
+find "${GITLAB_BACKUPS_DIR}" -maxdepth 1 -mindepth 1 -name "*.tar" | sort | uniq | grep -v '^$' > /tmp/file_list_after
 if [ -f /tmp/file_list_after ]; then
   cat /tmp/file_list_after | debug "file_list_after: "
 fi
