@@ -100,7 +100,7 @@ if [ "${all_remote_objects_count}" -gt "${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP:-14}"
   for (( i=0; i<$all_remote_objects_count; i++ )) do
     object_name=$(printf '%s' "${all_remote_objects}" | jq ".[$i].Name")
     object_date=$(printf '%s' "${object_name}" | awk 'BEGIN{FS="_"}{print $1}')
-    all_remote_objects=$(printf '%s' "${all_remote_objects}" | jq ".[$i].UnixTime = \"${object_date}\"")
+    all_remote_objects=$(printf '%s' "${all_remote_objects}" | jq -r ".[$i].UnixTime = \"${object_date}\"")
   done
 fi
 printf '%s' "${all_remote_objects}" | jq
