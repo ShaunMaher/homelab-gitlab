@@ -94,7 +94,6 @@ EOF
 all_remote_objects=$(rclone --config /tmp/rclone.conf lsjson "wasabi:${S3_BUCKET}/")
 printf '%s' "${all_remote_objects}" | jq
 all_remote_objects_count=$(printf '%s' "${all_remote_objects}" | jq "length")
-printf '%s' "${all_remote_objects_count}"
 if [ "${all_remote_objects_count}" -gt "${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP:-14}" ]; then
   info "More than ${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP} backups exist in the remote repository.  Looking for candidates to prune."
   for (( i=0; i<$all_remote_objects_count; i++ )) do
@@ -109,11 +108,11 @@ if [ "${all_remote_objects_count}" -gt "${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP:-14}"
     object_name=$(printf '%s' "${old_objects}" | jq -r ".[$i].Name")
     object_path=$(printf '%s' "${old_objects}" | jq -r ".[$i].Path")
     object_date=$(printf '%s' "${old_objects}" | jq -r ".[$i].UnixTime")
-    info "Backup '${object_name}', created "$(date -d "@${object_date}")" is more than ${MINIMUM_AGE_OF_BACKUP_TO_DELETE} days old.  It can be pruned."
+    info "Backup '${object_name}', created $(date -d "@${object_date}") is more than ${MINIMUM_AGE_OF_BACKUP_TO_DELETE} days old.  It can be pruned."
     debug "rclone rm \"wasabi:${S3_BUCKET}/${object_path}\""
   done
 fi
-printf '%s' "${all_remote_objects}" | jq
+#printf '%s' "${all_remote_objects}" | jq
 exit
 
 if [ $last_success_age -gt 0 ]; then
