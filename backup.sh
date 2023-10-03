@@ -21,7 +21,7 @@ NC='\033[0m' # No Color
 #sleep $(( $RANDOM % 3600 ))
 
 apt update
-apt install -y rclone docker.io pv
+apt install -y rclone docker.io pv jq
 
 function verbose() {
   printf '%b\n' "${YELLOW}${1}${NC}"
@@ -87,6 +87,9 @@ storage_class =
 no_check_bucket = true
 chunk_size = 64M
 EOF
+
+rclone --config /tmp/rclone.conf lsjson "wasabi:${S3_BUCKET}/"
+exit
 
 if [ $last_success_age -gt 0 ]; then
   if [ $last_full_age -lt 2419200 ]; then
