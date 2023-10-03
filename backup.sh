@@ -242,8 +242,8 @@ if [ $current_copy_exit_code -eq 0 ] && [ $current_backup_result -eq 0 ]; then
     printf '%b' "${current_start_time}" > /etc/gitlab-backups/last_full_success_start_time
   fi
   cat /tmp/file_list_after >/etc/gitlab-backups/file_list_before
-  if [ -f /etc/gitlab-backups/file_list_after ]; then
-    cat /etc/gitlab-backups/file_list_after | debug "file_list_after: "
+  if [ -f /tmp/file_list_after ]; then
+    cat /tmp/file_list_after | debug "file_list_after: "
   fi
   
   # TODO: cleanup local files
@@ -275,4 +275,8 @@ if [ $current_copy_exit_code -eq 0 ] && [ $current_backup_result -eq 0 ]; then
 elif [ $current_backup_skipped -lt 1 ]; then
   echo "Backup or upload process failed." | error
   sleep 1200
+fi
+
+if [ -f /etc/gitlab-backups/file_list_before ]; then
+  cat /etc/gitlab-backups/file_list_before | debug "file_list_before: "
 fi
