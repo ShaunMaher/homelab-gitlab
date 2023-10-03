@@ -19,9 +19,6 @@ minimum_timestamp_of_backup=$(( $(date +%s) - $MINIMUM_AGE_OF_BACKUP_TO_DELETE )
 
 #sleep $(( $RANDOM % 3600 ))
 
-apt update
-apt install -y rclone docker.io pv jq
-
 # These are not used by the relevant functions yet
 VERBOSE="${VERBOSE:-"/dev/stderr"}"
 DEBUG="${DEBUG:-"/dev/stderr"}"
@@ -132,6 +129,11 @@ current_copy_exit_code=1
 current_backup_result=1
 current_backup_skipped=0
 
+apt update 2> >(error "apt update: ") > >(debug "apt update: ")
+apt install -y rclone docker.io pv jq 2> >(error "apt install: ") > >(debug "apt install: ")
+
+ls -la /etc/gitlab-nackups 2> >(error "ls: ") > >(debug "ls: ")
+
 # Load the timestamps of the most recent successful backups
 if [ -f /etc/gitlab-backups/last_incremental_success_start_time ]; then
   last_incremental_success_start_time=$(cat /etc/gitlab-backups/last_incremental_success_start_time)
@@ -149,10 +151,10 @@ fi
 last_success_age=$(( $(date +%s) - $last_success_start_time ))
 last_full_age=$(( $(date +%s) - $last_full_success_start_time ))
 
-debug "last_full_success_start_time: $last_full_success_start_time"
-debug "last_incremental_success_start_time: $last_incremental_success_start_time"
-debug "last_success_start_time: $last_success_start_time"
-debug "last_success_age: $last_success_age"
+echo "last_full_success_start_time: $last_full_success_start_time" | debug
+echo "last_incremental_success_start_time: $last_incremental_success_start_time" | debug
+echo "last_success_start_time: $last_success_start_time" | debug
+echo "last_success_age: $last_success_age" | debug
 date +%s > /etc/gitlab-backups/current_start_time
 
 # Write Wasabi configuration to rclone conf file
@@ -209,8 +211,8 @@ for file in "${new_files[@]}"; do
   rel_file=$(basename "${abs_file}")
   if [ ! "" == "${abs_file}" ]; then
     verbose "New file was created: ${abs_file}"
-    tar --append -f "${abs_file}" "${GITLAB_BACKUPS_DIR}/gitlab.rb" 2> >(error "tar: ") > >(debug "tar: ")
-    tar --append -f "${abs_file}" "${GITLAB_BACKUPS_DIR}/gitlab-secrets.json" 2> >(error "tar: ") > >(debug "tar: ")
+    tar --append -f "${abs_file}" "${GITLAB_BACKUPS_DIR}/gitlab.rb" 2> >(grep -v "Removing leading" | error "tar: ") > >(debug "tar: ")
+    tar --append -f "${abs_file}" "${GITLAB_BACKUPS_DIR}/gitlab-secrets.json" 2> >(grep -v "Removing leading" | error "tar: ") > >(debug "tar: ")
     #tar --list -f "${abs_file}" 2> >(error "tar: ") > >(debug "tar: ")
     debug "pv \"${abs_file}\" | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass [MASKED] | rclone --config /tmp/rclone.conf rcat \"wasabi:${S3_BUCKET}/${rel_file}\""
     pv "${abs_file}" 2> >(error "pv: ") | openssl enc -aes-256-cbc -md sha512 -iter 8192000 -pass "${OPENSSL_PASS}" 2> >(error "openssl: ") | rclone --config /tmp/rclone.conf rcat "wasabi:${S3_BUCKET}/${rel_file}" 2> >(error "rclone: ") > >(debug "rclone: ")
@@ -241,7 +243,7 @@ if [ $current_copy_exit_code -eq 0 ] && [ $current_backup_result -eq 0 ]; then
   printf '%s' "${all_remote_objects}" | jq -C | debug "all_remote_objects: "
   all_remote_objects_count=$(printf '%s' "${all_remote_objects}" | jq "length")
   if [ "${all_remote_objects_count}" -gt "${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP:-14}" ]; then
-    info "More than ${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP} backups exist in the remote repository.  Looking for candidates to prune."
+    echo "More than ${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP} backups exist in the remote repository.  Looking for candidates to prune." | info
     for (( i=0; i<$all_remote_objects_count; i++ )) do
       object_name=$(printf '%s' "${all_remote_objects}" | jq -r ".[$i].Name")
       object_date=$(printf '%s' "${object_name}" | awk 'BEGIN{FS="_"}{print $1}')
@@ -254,11 +256,11 @@ if [ $current_copy_exit_code -eq 0 ] && [ $current_backup_result -eq 0 ]; then
       object_name=$(printf '%s' "${old_objects}" | jq -r ".[$i].Name")
       object_path=$(printf '%s' "${old_objects}" | jq -r ".[$i].Path")
       object_date=$(printf '%s' "${old_objects}" | jq -r ".[$i].UnixTime")
-      info "Backup '${object_name}', created $(date -d "@${object_date}") is more than ${MINIMUM_AGE_OF_BACKUP_TO_DELETE} seconds old.  It can be pruned."
-      debug "rclone rm \"wasabi:${S3_BUCKET}/${object_path}\""
+      echo "Backup '${object_name}', created $(date -d "@${object_date}") is more than ${MINIMUM_AGE_OF_BACKUP_TO_DELETE} seconds old.  It can be pruned." | info
+      echo "rclone rm \"wasabi:${S3_BUCKET}/${object_path}\"" | debug
     done
   fi
 elif [ $current_backup_skipped -lt 1 ]; then
-  error "Backup or upload process failed."
+  echo "Backup or upload process failed." | error
   sleep 1200
 fi
