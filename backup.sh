@@ -98,9 +98,9 @@ printf '%s' "${all_remote_objects_count}"
 if [ "${all_remote_objects_count}" -gt "${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP:-14}" ]; then
   info "More than ${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP} backups exist in the remote repository.  Looking for candidates to prune."
   for (( i=0; i<$all_remote_objects_count; i++ )) do
-    object_name=$(printf '%s' "${ALLOBJECTS}" | jq ".[$i].Name")
+    object_name=$(printf '%s' "${all_remote_objects}" | jq ".[$i].Name")
     object_date=$(printf '%s' "${object_name}" | awk 'BEGIN{FS="_"}{print $1}')
-    all_remote_objects=$(printf '%s' "${all_remote_objects}" | jq ".[$i].Date = \"${object_date}\"")
+    all_remote_objects=$(printf '%s' "${all_remote_objects}" | jq ".[$i].UnixTime = \"${object_date}\"")
   done
 fi
 printf '%s' "${all_remote_objects}" | jq
