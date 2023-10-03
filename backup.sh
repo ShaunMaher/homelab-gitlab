@@ -93,7 +93,8 @@ EOF
 
 all_remote_objects=$(rclone --config /tmp/rclone.conf lsjson "wasabi:${S3_BUCKET}/")
 printf '%s' "${all_remote_objects}" | jq
-if [ $(printf '%s' "${all_remote_obejcts}" | jq "length") -gt ${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP} ]; then
+printf '%s' "${all_remote_objects}" | jq "length"
+if [ $(printf '%s' "${all_remote_obejcts}" | jq "length") -gt $MINIMUM_COUNT_OF_BACKUPS_TO_KEEP ]; then
   info "More than ${MINIMUM_COUNT_OF_BACKUPS_TO_KEEP} backups exist in the remote repository.  Looking for candidates to prune."
   for (( i=0; i<$count; i++ )) do
     object_name=$(printf '%s' "${ALLOBJECTS}" | jq ".[$i].Name")
