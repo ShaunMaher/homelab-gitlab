@@ -1,4 +1,63 @@
-# Gitlab Omnibus with Runner, Cloudflared Tunnel Ingress and Cloud Backups
+# Gitlab Omnibus with Shared Runner, Cloudflared Tunnel Ingress, Separate Pages Instance and Cloud Backups
+This project documents the process I used to create a self-hosted GitLab
+instance in my homelab.
+
+The homelab components are all inside a Ubuntu VM with Docker and Portainer
+installed.  Watchtower is used to keep the various OCI images up-to-date.
+TODO: Add the watchtower details here or link to it's separate project.
+
+The whole Ubuntu VM is backed up locally and to a cloud VPS.  TODO: Link to the
+sanoid-pull-backups project here.
+
+Goals:
+* No firewall requirements for the homelab network.  No port forwards, no need
+  to manage firewall whitelists, DDoS protection, etc.
+* Good availablity but an outage of few minutes a week is acceptable in
+  exchange for automated update processes to restart/reboot things.
+* Get the most out of Cloudflare's generous Free offerings.
+  * My domain's DNS is already hosted by Cloudflare
+* GitLab Pages are to be hosted by both the local GitLab instance (in the
+  homelab) and a VPS.  I don't want my Pages to rely on my home infrastructure
+  (residential grade internet connection, oldish server, no UPS, automatic
+  updates and reboots, etc.).
+* GitLab must be backed up offsite to cost effective storage.
+  * I'm only backing up a subset of GitLab data.  To reduce the size of the
+    data that must be uploaded to the cloud (over my home internet connection)
+    I do NOT backup objects that can be easily recreated (packages, OCI images,
+    CI/CD artifacts).  These can be recreated by simply re-running the CI/CD
+    pipelines that created them.
+* The Ubuntu VM has 2 separate virtual disks.  One is dedicated for
+  "BulkStorage".  In my case the "BulkStorage" disk is on mechanical hard
+  drives and the other virtual disk is on SSD.  Only the virtual disk on SSD
+  is backed up to the cloud and I need to minimise the changes that are written
+  to this disk to minimise the data that needs to be sent.  For this reason,
+  any GitLab data that frequently changes, but is of little value, is mapped to
+  the "BulkStorage" volume.
+* Minimal manual maintenance.
+  * The Ubuntu VM in the homelab is configured with unattended upgrades with
+    automatic reboots.
+  * The Ubuntu VPS is also configured with unattended upgrades with automatic
+    reboots.
+  * Watchtower is used to keep the OCI images up-to-date
+
+Major components:
+* docker-compose.yml - Deployed by Portainer on the homelab Ubuntu VM:
+  * A GitLab Onmibus container
+  * A GitLab Runner container for running CI/CD jobs as a shared runner
+  * A second GitLab runner for running backups of GitLab itself
+    * This runner has additional permissions and access to the Gitlab Omnibus
+      container, that the shared runner doesn't have.
+  * 2x Cloudflared tunnel containers
+  * 2x containers that automatically generate configuration for the cloudflared
+    containers
+* docker-compose-pages.yml - Deployed by Portainer on the Ubuntu VPS:
+  * A GitLab Omnibus container that has only the "pages" role (i.e. only hosts
+    "GitLab Pages" and nothing else).
+  * A cloudflared tunnel container.
+  * A container that automatically generates configuration for the cloudflared
+    container.
+* backup.sh: A script to send GitLab backups to offsite cloud storage
+
 ## TODOs
 * Add health checks to containers
 * Make the pages tunnel depend on Omnibus being healthy so it doesn't start
@@ -6,36 +65,56 @@
   server to continue receiving 100% of requests until the local node is
   actually ready.
 
-## Cloudflare tunnels
+## Deployment Process
+### Create cloudflared tunnels
 We will establish two tunnels to Cloudflare.  One will be for Gitlab Pages
 traffic and the other will be for all other traffic.  This will allow us to 
 seperate the Gitlab Pages requests and handle them differently.
+
+The following commands will, after asking you to authenticate with Cloudflare,
+create some tunnels and credentials that allows the cloudflare instances that
+will be deployed to connect to the Cloudflare network.
+
+Create a tunnel specifically for GitLab Pages.  This tunnel will be used by
+both the homelab Omnibus instance and the VPS Pages only Omnibus instance so
+that cloudflare will route traffic to whichever one is up, without needing a
+cloud load balancer.
 ```
 cloudflared tunnel create pages.ghanima.net
 ```
 
+Create a tunnel for all remaining GitLab services.
 ```
 cloudflared tunnel create git.ghanima.net
 ```
 
-## S3
-We will be storing Gitlab Pages and Gitlab backups in S3 storage.  For this
-implementation we will specifically use Wasabi because it's cheap and seems
-reliable.
+### S3 Object Storage (for Pages and Backups)
+In order for GitLab Pages to be hosted by separate GitLab instances, the Pages
+artifacts must be stored in a manner that both instances can access.
 
-### Buckets
+We also need a place to store the GitLab backups.
+
+I chose to store them in Wasabi's object storage (unfortnately, not a paid
+endoursement), which presents an S3 compatible API, because I started this
+project before Cloudflare started offering it's R2 storage on the Free plan.
+
+I need less then 1TiB of cloud storage so I'm happy to pay a few dollars a
+month and know it's not going to disappear if someone decides they were being
+too generous.
+
+#### Buckets
 Create two buckets (maybe more later):
 * `pages.git.ghanima.net`
 * `backups.git.ghanima.net`
 
-### Users
+#### Users
 Create two users:
 * git.ghanima.net
 * pages.ghanima.net
 
 Each new user will have an "ARN".  This ARN will be used in the Access Policies.
 
-### Access policies
+#### Access policies
 The [pages.git.ghanima.net Bucket's Access Policy](arn-aws-s3---pages.git.ghanima.net.json)
 allows the "git.ghanima.net" user read-write access to the bucket contents but
 allows the "pages.ghanima.net" user read-only access.
@@ -57,7 +136,11 @@ with the ARN of the "git.ghanima.net" user.
   `"Resource": "arn:aws:s3:::backups.git.ghanima.net"` with the ARN of the
   backups.git.ghanima.net bucket.
 
-## Environment variables
+### Portainer Stack(s)
+#### TODO: How to deploy the stacks
+TODO
+
+#### Environment variables
 The following environment variables must be created:
 * For S3 Object storage
   * `S3_ACCESS_KEY`: Access Key ID for the "git.ghanima.net" user.  Used for Gitlab Pages access to the S3 storage.
@@ -71,7 +154,12 @@ The following environment variables must be created:
   * `CF_CREDENTIALS`: 
   * `BACKUPSRUNNER_REGISTRATION_TOKEN`: Create but leave blank initially.
 
-## Post Installation
+### Public DNS Records in Cloudflare
+TODO
+
+## Post Deployment
+Some additional manual steps to tweak the new GitLab instance
+
 ### Disable "Sign-up"
 * **Admin Area** -> **General** -> **Sign-up Restrictions** -> uncheck **Sign-up enabled**
 
@@ -84,17 +172,21 @@ links:
   - omnibus:git.ghanima.net
 ```
 
-### Register the runner
+### Register the shared runner
 TODO: Update the docker-compose.yml file to automatically register the runner
 like what we have for the backuprunner.
 
 ### SSO with Google Workspace
 TODO
 
-### Cloudflare Access
-#### SSH Access
+### cloudflared Access
+It is possible to restrict access to, for example, the SSH service, to only
+connections from clients that are also using cloudflared.
 
-## Backup Configuration
+#### SSH Access
+TODO: Do we want external SSH access at all.  HTTPS is already available.
+
+### Backup Configuration
 **Reference:** https://docs.gitlab.com/ee/raketasks/backup_gitlab.html
 
 The script `backup.sh` does the following:
@@ -102,14 +194,15 @@ The script `backup.sh` does the following:
   produced if:
   * No local incremental backups exist
   * It has been more than 4 weeks since the last Full backup.
+  * TODO: The full incremental backups aren't really that much smaller than the
+    full backups (since we skip backing up some objects).  Maybe we don't do
+    incremental backups at all.
 * Appends the `gitlab.rb` and `gitlab-secrets.json` files to the backup
   * Generally these files should be considered "sensitive" but the backup file
     is encrypted before it is sent to Cloud Storage so if this file is leaked
     the attacker still can't access these sensitive files without first
     breaking the encryption
 * Encrypts and streams the backup to S3 Cloud Storage with the `rclone` tool
-  * I use Wasabi for cost effective S3 cloud storage (and I'm not paid to say
-    that, unfortunately)
 
 ### Configuration
 * Create a project for GitLab backups.  It can be this same project.
@@ -132,6 +225,8 @@ The script `backup.sh` does the following:
 ## Storing Gitlab Pages (and other selected objects) in Cloud Object Storage
 **Reference:** https://docs.gitlab.com/ee/administration/pages/#using-object-storage
 
+> This section needs to be rewritten and moved to the Portainer Stack(s) section
+
 The following will store certain objects in Wasabi cloud storage.  The initial
 goal is to have pages hosted in the cloud but to do this you need a seperate
 GitLab instance pointing at the same Object Storage as the primary instance.
@@ -140,6 +235,8 @@ TODO: more info
 
 ## Work in Progress: Pages server on a VPS (for availability and to reduce dependence on home internet connection)
 **Reference:** https://docs.gitlab.com/ee/administration/pages/#running-gitlab-pages-on-a-separate-server
+
+> This section needs to be rewritten and moved to the Portainer Stack(s) section
 
 Should we run a wireguard tunnel between servers or just traverse the internet?
 
