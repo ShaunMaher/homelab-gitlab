@@ -95,6 +95,9 @@ services:
     image: gitlab/gitlab-runner:latest
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
+    links:
+      - omnibus:git.ghanima.net
+
     restart: always
     container_name: runner
     hostname: runner
