@@ -8,6 +8,10 @@ services:
     restart: always
     container_name: 'omnibus'
     hostname: 'omnibus'
+    networks:
+      default:
+        aliases:
+          - git.ghanima.net
     environment:
       TZ: Australia/Melbourne
 
@@ -97,10 +101,10 @@ services:
       - "com.centurylinklabs.watchtower.enable=true"
     links:
       - omnibus:git.ghanima.net
-
     restart: always
-    container_name: runner
     hostname: runner
+    networks:
+      - default
     environment:
       TZ: Australia/Melbourne
     volumes:
@@ -110,6 +114,8 @@ services:
         target: /var/run/docker.sock
   cloudflared_configure:
     restart: always
+    networks:
+      - default
     image: bash:latest
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
@@ -190,6 +196,8 @@ services:
       TUNNEL_LOGLEVEL: trace
     pid: service:cloudflared_configure
     restart: always
+    networks:
+      - default
     hostname: 'cloudflared'
     command: '--protocol http2 tunnel run'
     volumes:
@@ -204,6 +212,8 @@ services:
     pid: service:cloudflared_configure
     restart: always
     hostname: 'cloudflared_pages'
+    networks:
+      - default
     command: '--protocol http2 tunnel run'
     volumes:
       - 'gitlab_cloudflared_pages_config:/etc/cloudflared'
@@ -252,6 +262,8 @@ services:
     privileged: true
     restart: always
     hostname: backupsrunner
+    networks:
+      - default
     environment:
       TZ: Australia/Melbourne
       RUNNER_REGISTRATION_TOKEN: $BACKUPSRUNNER_REGISTRATION_TOKEN
@@ -283,3 +295,6 @@ volumes:
   gitlab_backupsrunner_config:
   gitlab_cloudflared_config:
   gitlab_cloudflared_pages_config:
+
+networks:
+  default:
