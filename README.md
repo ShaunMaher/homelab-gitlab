@@ -60,10 +60,6 @@ Major components:
 
 ## TODOs
 * Add health checks to containers
-* Make the pages tunnel depend on Omnibus being healthy so it doesn't start
-  before pages are actually accessible.  This will allow the alternative pages
-  server to continue receiving 100% of requests until the local node is
-  actually ready.
 
 ## Deployment Process
 ### Create cloudflared tunnels
