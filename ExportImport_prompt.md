@@ -8,5 +8,6 @@ OBJECTIVES
 * Uses the Gitlab API of a second GitLab instance (GitLabInstance2) to import each previously exported project
 * Maintains the project group hierarchy from GitlabInstance1 into GitLabInstance2
 * Include basic error handling
+* GitLab import and export API information can be found here: https://docs.gitlab.com/ee/api/project_import_export.html
 * Abort is any step fails
 ```
